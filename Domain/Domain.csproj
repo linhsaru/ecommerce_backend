@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Domain</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.6.2" />
+  </ItemGroup>
+
+  <!-- Dam bao tat ca file .cs trong Entities, Enums, Common duoc bien dich vao assembly -->
+  <ItemGroup>
+    <Compile Include="Common\**\*.cs" />
+    <Compile Include="Entities\**\*.cs" />
+    <Compile Include="Enums\**\*.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Interfaces\Repositories\IUserRepository.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Events\" />
+    <Folder Include="Specifications\" />
+  </ItemGroup>
+
+</Project>

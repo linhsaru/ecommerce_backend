@@ -1,0 +1,37 @@
+## [ Visual Studio ]
+.vs/
+[Bb]in/
+[Oo]bj/
+*.user
+*.userosscache
+*.sln.docstates
+
+## [ .NET Core ]
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## [ ASP.NET Core ]
+wwwroot/lib/
+appsettings.Development.json
+appsetting.json
+
+## [ Thư mục lưu trữ tạm & Log ]
+*.log
+.clog/
+.placeholder
+
+## [ Công cụ & IDE khác ]
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+.idea/
+*.swp
+*~
+
+## [ Database ]
+*.db
+*.sqlite
+*.mdf
+*.ldf
