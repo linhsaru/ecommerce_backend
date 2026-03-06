@@ -14,7 +14,7 @@ artifacts/
 ## [ ASP.NET Core ]
 wwwroot/lib/
 appsettings.Development.json
-appsetting.json
+appsettings.json
 
 ## [ Thư mục lưu trữ tạm & Log ]
 *.log
