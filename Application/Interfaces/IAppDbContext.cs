@@ -28,6 +28,8 @@ public interface IAppDbContext
     DbSet<Payment> Payments { get; }
     DbSet<Shipment> Shipments { get; }
     DbSet<ProductReview> ProductReviews { get; }
+    DbSet<Promotion> Promotions { get; }
+    DbSet<PromotionProduct> PromotionProducts { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

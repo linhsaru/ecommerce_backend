@@ -18,6 +18,6 @@ public sealed class CreateProductRequest
     public string? Description { get; set; }
     public int Status { get; set; } = 1;
     public string? ThumbnailUrl { get; set; }
-    public long? BrandId { get; set; }
-    public List<long>? CategoryIds { get; set; }
+    public Guid? BrandId { get; set; }
+    public List<Guid>? CategoryIds { get; set; }
 }

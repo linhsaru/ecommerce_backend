@@ -5,6 +5,7 @@ using Application.DTOs.Products;
 using Application.Interfaces;
 using Application.Interfaces.Services;
 using Domain.Entities;
+using Domain.Interfaces.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Services;
@@ -14,16 +15,16 @@ namespace Application.Services;
 /// </summary>
 public sealed class ProductService : IProductService
 {
-    private readonly IAppDbContext _db;
+    private readonly IProductRepository _productRepo;
 
-    public ProductService(IAppDbContext db)
+    public ProductService(IProductRepository productRepo)
     {
-        _db = db;
+        _productRepo = productRepo;
     }
 
     public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, CancellationToken cancellationToken = default)
     {
-        var query = _db.Products.AsNoTracking().Where(p => p.DeletedAt == null);
+        var query = _productRepo.GetQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(p => p.Name.Contains(search) || (p.Slug != null && p.Slug.Contains(search)));
@@ -55,13 +56,7 @@ public sealed class ProductService : IProductService
 
     public async Task<Result<ProductDetailDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
     {
-        var product = await _db.Products
-            .AsNoTracking()
-            .Include(p => p.Brand)
-            .Include(p => p.ProductCategories).ThenInclude(pc => pc.Category)
-            .Include(p => p.ProductImages.OrderBy(pi => pi.SortOrder))
-            .Include(p => p.ProductVariants.Where(v => v.DeletedAt == null))
-            .FirstOrDefaultAsync(p => p.Slug == slug && p.DeletedAt == null, cancellationToken);
+        var product = await _productRepo.GetBySlugAsync(slug, cancellationToken);
 
         if (product == null)
             return Result<ProductDetailDto?>.Fail("NOT_FOUND", "Product not found.");
@@ -69,15 +64,9 @@ public sealed class ProductService : IProductService
         return Result<ProductDetailDto?>.Ok(MapToDetail(product));
     }
 
-    public async Task<Result<ProductDetailDto?>> GetByIdAsync(long id, CancellationToken cancellationToken = default)
+    public async Task<Result<ProductDetailDto?>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var product = await _db.Products
-            .AsNoTracking()
-            .Include(p => p.Brand)
-            .Include(p => p.ProductCategories).ThenInclude(pc => pc.Category)
-            .Include(p => p.ProductImages.OrderBy(pi => pi.SortOrder))
-            .Include(p => p.ProductVariants.Where(v => v.DeletedAt == null))
-            .FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, cancellationToken);
+        var product = await _productRepo.GetByIdAsync(id, cancellationToken);
 
         if (product == null)
             return Result<ProductDetailDto?>.Fail("NOT_FOUND", "Product not found.");
@@ -87,7 +76,7 @@ public sealed class ProductService : IProductService
 
     public async Task<Result<ProductDto>> CreateAsync(CreateProductRequest request, CancellationToken cancellationToken = default)
     {
-        var exists = await _db.Products.AnyAsync(p => p.Slug == request.Slug && p.DeletedAt == null, cancellationToken);
+        var exists = await _productRepo.ExistsBySlugAsync(request.Slug, null, cancellationToken);
         if (exists)
             return Result<ProductDto>.Fail("VALIDATION_ERROR", "Slug already exists.");
 
@@ -100,14 +89,15 @@ public sealed class ProductService : IProductService
             ThumbnailUrl = request.ThumbnailUrl,
             BrandId = request.BrandId
         };
-        _db.Products.Add(product);
-        await _db.SaveChangesAsync(cancellationToken);
+        _productRepo.Add(product);
+        await _productRepo.SaveChangesAsync(cancellationToken);
 
         if (request.CategoryIds != null && request.CategoryIds.Count > 0)
         {
-            foreach (var catId in request.CategoryIds)
-                _db.ProductCategories.Add(new ProductCategory { ProductId = product.Id, CategoryId = catId });
-            await _db.SaveChangesAsync(cancellationToken);
+            var productCategories = request.CategoryIds.Select(
+                catId => new ProductCategory { ProductId = product.Id, CategoryId = catId }).ToList();
+            _productRepo.AddProductCategories(productCategories);
+            await _productRepo.SaveChangesAsync(cancellationToken);
         }
 
         return Result<ProductDto>.Ok(new ProductDto
@@ -124,11 +114,9 @@ public sealed class ProductService : IProductService
         });
     }
 
-    public async Task<Result<ProductDto>> UpdateAsync(long id, UpdateProductRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<ProductDto>> UpdateAsync(Guid id, UpdateProductRequest request, CancellationToken cancellationToken = default)
     {
-        var product = await _db.Products
-            .Include(p => p.ProductCategories)
-            .FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, cancellationToken);
+        var product = await _productRepo.GetByIdAsync(id, cancellationToken);
 
         if (product == null)
             return Result<ProductDto>.Fail("NOT_FOUND", "Product not found.");
@@ -136,7 +124,7 @@ public sealed class ProductService : IProductService
         if (request.Name != null) product.Name = request.Name;
         if (request.Slug != null)
         {
-            var exists = await _db.Products.AnyAsync(p => p.Slug == request.Slug && p.Id != id && p.DeletedAt == null, cancellationToken);
+            var exists = await _productRepo.ExistsBySlugAsync(request.Slug, id, cancellationToken);
             if (exists)
                 return Result<ProductDto>.Fail("VALIDATION_ERROR", "Slug already exists.");
             product.Slug = request.Slug;
@@ -148,13 +136,14 @@ public sealed class ProductService : IProductService
 
         if (request.CategoryIds != null)
         {
-            _db.ProductCategories.RemoveRange(product.ProductCategories);
-            foreach (var catId in request.CategoryIds)
-                _db.ProductCategories.Add(new ProductCategory { ProductId = product.Id, CategoryId = catId });
+            _productRepo.RemoveProductCategories(product.ProductCategories.ToList());
+            var productCategories = request.CategoryIds.Select(
+                catId => new ProductCategory { ProductId = product.Id, CategoryId = catId }).ToList();
+            _productRepo.AddProductCategories(productCategories);
         }
 
         product.UpdatedAt = DateTimeOffset.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
+        await _productRepo.SaveChangesAsync(cancellationToken);
 
         return Result<ProductDto>.Ok(new ProductDto
         {
@@ -170,14 +159,14 @@ public sealed class ProductService : IProductService
         });
     }
 
-    public async Task<Result> DeleteAsync(long id, CancellationToken cancellationToken = default)
+    public async Task<Result> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var product = await _db.Products.FirstOrDefaultAsync(p => p.Id == id && p.DeletedAt == null, cancellationToken);
+        var product = await _productRepo.GetByIdAsync(id, cancellationToken);
         if (product == null)
             return Result.Fail("NOT_FOUND", "Product not found.");
 
         product.MarkDeleted(null);
-        await _db.SaveChangesAsync(cancellationToken);
+        await _productRepo.SaveChangesAsync(cancellationToken);
         return Result.Ok();
     }
 

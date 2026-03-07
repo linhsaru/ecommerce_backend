@@ -89,7 +89,7 @@ namespace Application.Services
 
             var newUser = new User
             {
-                Uuid = Guid.NewGuid(),
+                Id = Guid.NewGuid(),
                 Email = registerRequest.Email,
                 FullName = registerRequest.FullName,
                 Username = registerRequest.UserName,

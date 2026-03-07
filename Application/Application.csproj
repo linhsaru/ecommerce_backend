@@ -18,13 +18,8 @@
 
   <ItemGroup>
     <Folder Include="Behaviors\" />
-    <Folder Include="FlashSales\" />
     <Folder Include="Interfaces\Repositories\" />
-    <Folder Include="Products\Commands\" />
-    <Folder Include="Products\DTOs\" />
-    <Folder Include="Products\Queries\" />
     <Folder Include="Recommendations\" />
-    <Folder Include="Orders\" />
   </ItemGroup>
 
 </Project>

@@ -7,8 +7,8 @@ namespace Application.DTOs.Categories;
 /// </summary>
 public sealed class CategoryDto
 {
-    public long Id { get; init; }
-    public long? ParentId { get; init; }
+    public Guid Id { get; init; }
+    public Guid? ParentId { get; init; }
     public string Name { get; init; } = "";
     public string Slug { get; init; } = "";
     public int SortOrder { get; init; }
