@@ -6,9 +6,8 @@ namespace Domain.Entities;
 /// <summary>
 /// Nguoi dung: email, phone, password_hash, full_name, status (1 active, 0 inactive, -1 banned).
 /// </summary>
-public class User : SoftDeleteEntity<long>
+public class User : SoftDeleteEntity<Guid>
 {
-    public Guid Uuid { get; set; }
     public required string Email { get; set; }
     public string? Phone { get; set; }
     public string? PasswordHash { get; set; }

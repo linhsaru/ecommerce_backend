@@ -13,6 +13,6 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
     {
         builder.ToTable("users");
         builder.HasIndex(u => u.Email).IsUnique().HasFilter("deleted_at IS NULL");
-        builder.HasIndex(u => u.Uuid).IsUnique();
+        builder.HasIndex(u => u.Id).IsUnique();
     }
 }

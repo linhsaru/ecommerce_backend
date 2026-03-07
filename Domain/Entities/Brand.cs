@@ -6,7 +6,7 @@ namespace Domain.Entities;
 /// <summary>
 /// Thuong hieu san pham: name, slug.
 /// </summary>
-public class Brand : SoftDeleteEntity<long>
+public class Brand : SoftDeleteEntity<Guid>
 {
     public required string Name { get; set; }
     public required string Slug { get; set; }

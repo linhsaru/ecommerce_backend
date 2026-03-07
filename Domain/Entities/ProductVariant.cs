@@ -3,9 +3,9 @@ using Domain.Common;
 /// <summary>
 /// Bien the san pham (size/color): sku, variant_name, attributes (jsonb), price, compare_at, cost, weight_gram, status.
 /// </summary>
-public class ProductVariant : SoftDeleteEntity<long>
+public class ProductVariant : SoftDeleteEntity<Guid>
 {
-    public long ProductId { get; set; }
+    public Guid ProductId { get; set; }
     public required string Sku { get; set; }
     public string? VariantName { get; set; }
     /// <summary>VD: {"size":"M","color":"Red"}</summary>

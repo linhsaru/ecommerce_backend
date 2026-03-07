@@ -6,7 +6,7 @@ namespace Domain.Entities;
 /// <summary>
 /// Kho hang: name, code.
 /// </summary>
-public class Warehouse : BaseEntity<long>
+public class Warehouse : BaseEntity<Guid>
 {
     public required string Name { get; set; }
     public required string Code { get; set; }

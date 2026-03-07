@@ -6,9 +6,9 @@ namespace Domain.Entities;
 /// <summary>
 /// Van chuyen: order_id, status, carrier, tracking_no, shipped_at, delivered_at, shipping_fee, raw_payload.
 /// </summary>
-public class Shipment : BaseEntity<long>
+public class Shipment : BaseEntity<Guid>
 {
-    public long OrderId { get; set; }
+    public Guid OrderId { get; set; }
     public ShipmentStatus Status { get; set; } = ShipmentStatus.pending;
     public string? Carrier { get; set; }
     public string? TrackingNo { get; set; }
