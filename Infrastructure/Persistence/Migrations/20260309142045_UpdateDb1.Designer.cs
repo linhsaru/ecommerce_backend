@@ -4,6 +4,7 @@ using Domain.Enums;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -12,9 +13,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260309142045_UpdateDb1")]
+    partial class UpdateDb1
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -936,23 +939,9 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnName("role_name");
 
                     b.HasKey("Id")
-                        .HasName("pk_roles");
+                        .HasName("pk_role");
 
-                    b.ToTable("roles", (string)null);
-
-                    b.HasData(
-                        new
-                        {
-                            Id = new Guid("b7e3f2a1-1234-4a5b-8c9d-e1f2a3b4c5d6"),
-                            Description = "Hệ thống quản trị",
-                            RoleName = "RoleAdmin"
-                        },
-                        new
-                        {
-                            Id = new Guid("c9d8e7f6-5678-4d3c-2b1a-f9e8d7c6b5a4"),
-                            Description = "Người dùng thông thường",
-                            RoleName = "RoleUser"
-                        });
+                    b.ToTable("role", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.Shipment", b =>
@@ -1059,7 +1048,7 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("text")
                         .HasColumnName("phone");
 
-                    b.Property<Guid?>("RoleId")
+                    b.Property<Guid>("RoleId")
                         .HasColumnType("uuid")
                         .HasColumnName("role_id");
 
@@ -1453,7 +1442,9 @@ namespace Infrastructure.Persistence.Migrations
                     b.HasOne("Domain.Entities.Role", "Role")
                         .WithMany("Users")
                         .HasForeignKey("RoleId")
-                        .HasConstraintName("fk_users_roles_role_id");
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_users_role_role_id");
 
                     b.Navigation("Role");
                 });

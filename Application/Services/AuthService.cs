@@ -3,6 +3,8 @@ using Application.DTOs.Auth;
 using Application.Interfaces;
 using Application.Interfaces.Services;
 using Domain.Entities;
+using Domain.Enums;
+using Domain.Helpers;
 using Domain.Interfaces.Repositories;
 
 namespace Application.Services
@@ -96,6 +98,7 @@ namespace Application.Services
                 Phone = registerRequest.PhoneNumber,
                 PasswordHash = passwordHash,
                 Status = 1,
+                RoleId = RoleHelper.GetId(UserRole.RoleUser)
             };
 
             // 3. Lưu vào DB

@@ -1,7 +1,6 @@
-﻿using Api.Middlewares;
+using Api.Middlewares;
+using API.Extensions;
 using Infrastructure;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,6 +12,8 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ExceptionHandlingMiddleware>();
 
 var app = builder.Build();
+
+await app.SeedAdminUserAsync();
 
 if (app.Environment.IsDevelopment())
 {

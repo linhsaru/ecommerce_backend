@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Domain.Common;
+using Domain.Enums;
 namespace Domain.Entities;
 
 /// <summary>
@@ -8,6 +9,7 @@ namespace Domain.Entities;
 /// </summary>
 public class User : SoftDeleteEntity<Guid>
 {
+    public Guid? RoleId { get; set; }
     public required string Email { get; set; }
     public string? Phone { get; set; }
     public string? PasswordHash { get; set; }
@@ -22,4 +24,6 @@ public class User : SoftDeleteEntity<Guid>
 
     public ICollection<UserAddress> Addresses { get; set; } = new List<UserAddress>();
     public ICollection<Cart> Carts { get; set; } = new List<Cart>();
+
+    public Role? Role { get; set; } 
 }

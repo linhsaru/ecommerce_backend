@@ -31,5 +31,7 @@ public interface IAppDbContext
     DbSet<Promotion> Promotions { get; }
     DbSet<PromotionProduct> PromotionProducts { get; }
 
+    DbSet<Role> Roles { get; }
+
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

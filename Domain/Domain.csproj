@@ -19,6 +19,7 @@
     <Compile Include="Enums\**\*.cs" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Helpers\RoleHelper.cs" />
     <Compile Include="Interfaces\Repositories\ICategoryRepository.cs" />
     <Compile Include="Interfaces\Repositories\IProductRepository.cs" />
     <Compile Include="Interfaces\Repositories\IUserRepository.cs" />
