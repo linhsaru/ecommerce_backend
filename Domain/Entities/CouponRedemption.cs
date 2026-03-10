@@ -5,11 +5,11 @@ namespace Domain.Entities;
 /// <summary>
 /// Lich su su dung coupon: coupon_id, user_id, order_id.
 /// </summary>
-public class CouponRedemption : BaseEntity<long>
+public class CouponRedemption : BaseEntity<Guid>
 {
-    public long CouponId { get; set; }
-    public long? UserId { get; set; }
-    public long? OrderId { get; set; }
+    public Guid CouponId { get; set; }
+    public Guid? UserId { get; set; }
+    public Guid? OrderId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     public Coupon Coupon { get; set; } = null!;

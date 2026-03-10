@@ -5,9 +5,9 @@ namespace Domain.Entities;
 /// <summary>
 /// Danh muc san pham (co the phan cap qua parent_id): name, slug, sort_order.
 /// </summary>
-public class Category : SoftDeleteEntity<long>
+public class Category : SoftDeleteEntity<Guid>
 {
-    public long? ParentId { get; set; }
+    public Guid? ParentId { get; set; }
     public required string Name { get; set; }
     public required string Slug { get; set; }
     public int SortOrder { get; set; }

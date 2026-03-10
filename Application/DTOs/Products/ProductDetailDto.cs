@@ -15,14 +15,14 @@ public sealed class ProductDetailDto : ProductDto
 
 public sealed class ProductCategoryDto
 {
-    public long Id { get; init; }
+    public Guid Id { get; init; }
     public string Name { get; init; } = "";
     public string Slug { get; init; } = "";
 }
 
 public sealed class ProductImageDto
 {
-    public long Id { get; init; }
+    public Guid Id { get; init; }
     public string Url { get; init; } = "";
     public string? Alt { get; init; }
     public int SortOrder { get; init; }
@@ -30,7 +30,7 @@ public sealed class ProductImageDto
 
 public sealed class ProductVariantDto
 {
-    public long Id { get; init; }
+    public Guid Id { get; init; }
     public string Sku { get; init; } = "";
     public string? VariantName { get; init; }
     public decimal Price { get; init; }

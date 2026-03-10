@@ -7,10 +7,10 @@ namespace Domain.Entities;
 /// <summary>
 /// Don hang: order_no, user_id, status, payment_status, subtotal/discount/shipping/total, snapshot dia chi giao hang.
 /// </summary>
-public class Order : BaseEntity<long>
+public class Order : BaseEntity<Guid>
 {
     public required string OrderNo { get; set; }
-    public long? UserId { get; set; }
+    public Guid? UserId { get; set; }
     public OrderStatus Status { get; set; } = OrderStatus.pending;
     public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.unpaid;
     public decimal SubtotalAmount { get; set; }

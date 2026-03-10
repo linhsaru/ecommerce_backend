@@ -49,7 +49,7 @@ public class ProductsController : BaseApiController
     [HttpGet("{id:long}")]
     [ProducesResponseType(typeof(ApiResponse<ProductDetailDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(long id, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken = default)
     {
         var result = await _productService.GetByIdAsync(id, cancellationToken);
         return result.ToActionResult(this);
@@ -88,7 +88,7 @@ public class ProductsController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<ProductDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Update(long id, [FromBody] UpdateProductRequest request, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateProductRequest request, CancellationToken cancellationToken = default)
     {
         var result = await _productService.UpdateAsync(id, request, cancellationToken);
         return result.ToActionResult(this);
@@ -100,7 +100,7 @@ public class ProductsController : BaseApiController
     [HttpDelete("{id:long}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken = default)
     {
         var result = await _productService.DeleteAsync(id, cancellationToken);
         if (result.IsFailure)

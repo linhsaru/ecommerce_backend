@@ -6,9 +6,9 @@ namespace Domain.Entities;
 /// <summary>
 /// Thanh toan: order_id, method, status, amount, provider, provider_txn_id, paid_at, raw_payload.
 /// </summary>
-public class Payment : BaseEntity<long>
+public class Payment : BaseEntity<Guid>
 {
-    public long OrderId { get; set; }
+    public Guid OrderId { get; set; }
     public PaymentMethod Method { get; set; }
     public PaymentStatus Status { get; set; } = PaymentStatus.unpaid;
     public decimal Amount { get; set; }

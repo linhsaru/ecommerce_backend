@@ -1,14 +1,15 @@
 using System;
 using System.Collections.Generic;
 using Domain.Common;
+using Domain.Enums;
 namespace Domain.Entities;
 
 /// <summary>
 /// Nguoi dung: email, phone, password_hash, full_name, status (1 active, 0 inactive, -1 banned).
 /// </summary>
-public class User : SoftDeleteEntity<long>
+public class User : SoftDeleteEntity<Guid>
 {
-    public Guid Uuid { get; set; }
+    public Guid? RoleId { get; set; }
     public required string Email { get; set; }
     public string? Phone { get; set; }
     public string? PasswordHash { get; set; }
@@ -23,4 +24,6 @@ public class User : SoftDeleteEntity<long>
 
     public ICollection<UserAddress> Addresses { get; set; } = new List<UserAddress>();
     public ICollection<Cart> Carts { get; set; } = new List<Cart>();
+
+    public Role? Role { get; set; } 
 }

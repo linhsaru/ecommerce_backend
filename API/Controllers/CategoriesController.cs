@@ -11,7 +11,7 @@ namespace API.Controllers;
 /// REST API cho danh muc: GET phan trang, GET theo id/slug, POST tao, PUT cap nhat, DELETE xoa mem.
 /// </summary>
 [ApiController]
-[Route("api/categories")]
+[Route("categories")]
 public class CategoriesController : BaseApiController
 {
     private readonly ICategoryService _categoryService;
@@ -22,7 +22,7 @@ public class CategoriesController : BaseApiController
     }
 
     /// <summary>
-    /// GET /api/categories?page=1&pageSize=10&search=...&parentId=...
+    /// GET categories?page=1&pageSize=10&search=...&parentId=...
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<CategoryDto>>), StatusCodes.Status200OK)]
@@ -45,12 +45,12 @@ public class CategoriesController : BaseApiController
     }
 
     /// <summary>
-    /// GET /api/categories/{id}
+    /// GET categories/{id}
     /// </summary>
     [HttpGet("{id:long}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetById(long id, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.GetByIdAsync(id, cancellationToken);
         if (result.IsSuccess && result.Value != null)
@@ -61,7 +61,7 @@ public class CategoriesController : BaseApiController
     }
 
     /// <summary>
-    /// GET /api/categories/slug/{slug}
+    /// GET categories/slug/{slug}
     /// </summary>
     [HttpGet("slug/{slug}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
@@ -77,9 +77,10 @@ public class CategoriesController : BaseApiController
     }
 
     /// <summary>
-    /// POST /api/categories
+    /// POST categories
     /// </summary>
     [HttpPost]
+    [Route("category")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Create([FromBody] CreateCategoryRequest request, CancellationToken cancellationToken = default)
@@ -94,13 +95,13 @@ public class CategoriesController : BaseApiController
     }
 
     /// <summary>
-    /// PUT /api/categories/{id}
+    /// PUT categories/{id}
     /// </summary>
     [HttpPut("{id:long}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Update(long id, [FromBody] UpdateCategoryRequest request, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCategoryRequest request, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.UpdateAsync(id, request, cancellationToken);
         if (result.IsSuccess)
@@ -111,12 +112,12 @@ public class CategoriesController : BaseApiController
     }
 
     /// <summary>
-    /// DELETE /api/categories/{id}
+    /// DELETE categories/{id}
     /// </summary>
     [HttpDelete("{id:long}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Delete(long id, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.DeleteAsync(id, cancellationToken);
         if (result.IsFailure)

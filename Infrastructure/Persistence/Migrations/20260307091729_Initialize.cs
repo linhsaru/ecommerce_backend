@@ -1,14 +1,13 @@
 ﻿using System;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore.Migrations;
-using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
 namespace Infrastructure.Persistence.Migrations
 {
     /// <inheritdoc />
-    public partial class InitDatabase : Migration
+    public partial class Initialize : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -23,8 +22,7 @@ namespace Infrastructure.Persistence.Migrations
                 name: "brands",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "text", nullable: false),
                     slug = table.Column<string>(type: "text", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -43,9 +41,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "categories",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    parent_id = table.Column<long>(type: "bigint", nullable: true),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    parent_id = table.Column<Guid>(type: "uuid", nullable: true),
                     name = table.Column<string>(type: "text", nullable: false),
                     slug = table.Column<string>(type: "text", nullable: false),
                     sort_order = table.Column<int>(type: "integer", nullable: false),
@@ -70,8 +67,7 @@ namespace Infrastructure.Persistence.Migrations
                 name: "coupons",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
                     code = table.Column<string>(type: "text", nullable: false),
                     name = table.Column<string>(type: "text", nullable: true),
                     discount_type = table.Column<string>(type: "text", nullable: false),
@@ -92,12 +88,31 @@ namespace Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "promotions",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    title = table.Column<string>(type: "character varying(255)", maxLength: 255, nullable: false),
+                    description = table.Column<string>(type: "text", nullable: true),
+                    banner_image = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: true),
+                    discount_type = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: true),
+                    discount_value = table.Column<decimal>(type: "numeric(18,2)", nullable: false),
+                    start_date = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    end_date = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    status = table.Column<string>(type: "character varying(20)", maxLength: 20, nullable: true),
+                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_promotions", x => x.id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "users",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    uuid = table.Column<Guid>(type: "uuid", nullable: false),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
                     email = table.Column<string>(type: "text", nullable: false),
                     phone = table.Column<string>(type: "text", nullable: true),
                     password_hash = table.Column<string>(type: "text", nullable: true),
@@ -105,6 +120,7 @@ namespace Infrastructure.Persistence.Migrations
                     username = table.Column<string>(type: "text", nullable: true),
                     avatar_url = table.Column<string>(type: "text", nullable: true),
                     status = table.Column<int>(type: "integer", nullable: false),
+                    last_login = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     created_by = table.Column<string>(type: "text", nullable: true),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
@@ -121,8 +137,7 @@ namespace Infrastructure.Persistence.Migrations
                 name: "warehouses",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
                     name = table.Column<string>(type: "text", nullable: false),
                     code = table.Column<string>(type: "text", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
@@ -136,9 +151,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "products",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    brand_id = table.Column<long>(type: "bigint", nullable: true),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    brand_id = table.Column<Guid>(type: "uuid", nullable: true),
                     name = table.Column<string>(type: "text", nullable: false),
                     slug = table.Column<string>(type: "text", nullable: false),
                     description = table.Column<string>(type: "text", nullable: true),
@@ -165,9 +179,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "carts",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    user_id = table.Column<long>(type: "bigint", nullable: true),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    user_id = table.Column<Guid>(type: "uuid", nullable: true),
                     session_id = table.Column<string>(type: "text", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
@@ -186,10 +199,9 @@ namespace Infrastructure.Persistence.Migrations
                 name: "orders",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
                     order_no = table.Column<string>(type: "text", nullable: false),
-                    user_id = table.Column<long>(type: "bigint", nullable: true),
+                    user_id = table.Column<Guid>(type: "uuid", nullable: true),
                     status = table.Column<OrderStatus>(type: "order_status", nullable: false),
                     payment_status = table.Column<PaymentStatus>(type: "payment_status", nullable: false),
                     subtotal_amount = table.Column<decimal>(type: "numeric", nullable: false),
@@ -211,14 +223,15 @@ namespace Infrastructure.Persistence.Migrations
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
                     cancelled_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
-                    completed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true)
+                    completed_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    coupon_id1 = table.Column<Guid>(type: "uuid", nullable: true)
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("pk_orders", x => x.id);
                     table.ForeignKey(
-                        name: "fk_orders_coupons_coupon_id",
-                        column: x => x.coupon_id,
+                        name: "fk_orders_coupons_coupon_id1",
+                        column: x => x.coupon_id1,
                         principalTable: "coupons",
                         principalColumn: "id");
                     table.ForeignKey(
@@ -232,9 +245,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "user_addresses",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    user_id = table.Column<long>(type: "bigint", nullable: false),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    user_id = table.Column<Guid>(type: "uuid", nullable: false),
                     recipient = table.Column<string>(type: "text", nullable: false),
                     phone = table.Column<string>(type: "text", nullable: false),
                     line1 = table.Column<string>(type: "text", nullable: false),
@@ -267,8 +279,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "product_categories",
                 columns: table => new
                 {
-                    product_id = table.Column<long>(type: "bigint", nullable: false),
-                    category_id = table.Column<long>(type: "bigint", nullable: false)
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    category_id = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -291,9 +303,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "product_images",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    product_id = table.Column<long>(type: "bigint", nullable: false),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
                     url = table.Column<string>(type: "text", nullable: false),
                     alt = table.Column<string>(type: "text", nullable: true),
                     sort_order = table.Column<int>(type: "integer", nullable: false)
@@ -313,10 +324,9 @@ namespace Infrastructure.Persistence.Migrations
                 name: "product_reviews",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    product_id = table.Column<long>(type: "bigint", nullable: false),
-                    user_id = table.Column<long>(type: "bigint", nullable: true),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    user_id = table.Column<Guid>(type: "uuid", nullable: true),
                     rating = table.Column<int>(type: "integer", nullable: false),
                     title = table.Column<string>(type: "text", nullable: true),
                     content = table.Column<string>(type: "text", nullable: true),
@@ -343,9 +353,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "product_variants",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    product_id = table.Column<long>(type: "bigint", nullable: false),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
                     sku = table.Column<string>(type: "text", nullable: false),
                     variant_name = table.Column<string>(type: "text", nullable: true),
                     attributes = table.Column<string>(type: "text", nullable: true),
@@ -373,14 +382,39 @@ namespace Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "promotion_products",
+                columns: table => new
+                {
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    promotion_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    discount_price = table.Column<decimal>(type: "numeric(18,2)", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("pk_promotion_products", x => x.id);
+                    table.ForeignKey(
+                        name: "fk_promotion_products_products_product_id",
+                        column: x => x.product_id,
+                        principalTable: "products",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                    table.ForeignKey(
+                        name: "fk_promotion_products_promotions_promotion_id",
+                        column: x => x.promotion_id,
+                        principalTable: "promotions",
+                        principalColumn: "id",
+                        onDelete: ReferentialAction.Cascade);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "coupon_redemptions",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    coupon_id = table.Column<long>(type: "bigint", nullable: false),
-                    user_id = table.Column<long>(type: "bigint", nullable: true),
-                    order_id = table.Column<long>(type: "bigint", nullable: true),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    coupon_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    user_id = table.Column<Guid>(type: "uuid", nullable: true),
+                    order_id = table.Column<Guid>(type: "uuid", nullable: true),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
@@ -408,11 +442,10 @@ namespace Infrastructure.Persistence.Migrations
                 name: "order_items",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    order_id = table.Column<long>(type: "bigint", nullable: false),
-                    product_id = table.Column<long>(type: "bigint", nullable: false),
-                    variant_id = table.Column<long>(type: "bigint", nullable: false),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    order_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    product_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    variant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     sku = table.Column<string>(type: "text", nullable: false),
                     name = table.Column<string>(type: "text", nullable: false),
                     variant_name = table.Column<string>(type: "text", nullable: true),
@@ -436,9 +469,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "payments",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    order_id = table.Column<long>(type: "bigint", nullable: false),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    order_id = table.Column<Guid>(type: "uuid", nullable: false),
                     method = table.Column<PaymentMethod>(type: "payment_method", nullable: false),
                     status = table.Column<PaymentStatus>(type: "payment_status", nullable: false),
                     amount = table.Column<decimal>(type: "numeric", nullable: false),
@@ -464,9 +496,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "shipments",
                 columns: table => new
                 {
-                    id = table.Column<long>(type: "bigint", nullable: false)
-                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
-                    order_id = table.Column<long>(type: "bigint", nullable: false),
+                    id = table.Column<Guid>(type: "uuid", nullable: false),
+                    order_id = table.Column<Guid>(type: "uuid", nullable: false),
                     status = table.Column<ShipmentStatus>(type: "shipment_status", nullable: false),
                     carrier = table.Column<string>(type: "text", nullable: true),
                     tracking_no = table.Column<string>(type: "text", nullable: true),
@@ -492,11 +523,12 @@ namespace Infrastructure.Persistence.Migrations
                 name: "cart_items",
                 columns: table => new
                 {
-                    cart_id = table.Column<long>(type: "bigint", nullable: false),
+                    cart_id = table.Column<Guid>(type: "uuid", nullable: false),
                     variant_id = table.Column<long>(type: "bigint", nullable: false),
                     quantity = table.Column<int>(type: "integer", nullable: false),
                     created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
+                    updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    variant_id1 = table.Column<Guid>(type: "uuid", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -508,8 +540,8 @@ namespace Infrastructure.Persistence.Migrations
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
                     table.ForeignKey(
-                        name: "fk_cart_items_product_variants_variant_id",
-                        column: x => x.variant_id,
+                        name: "fk_cart_items_product_variants_variant_id1",
+                        column: x => x.variant_id1,
                         principalTable: "product_variants",
                         principalColumn: "id",
                         onDelete: ReferentialAction.Cascade);
@@ -519,8 +551,8 @@ namespace Infrastructure.Persistence.Migrations
                 name: "inventory",
                 columns: table => new
                 {
-                    warehouse_id = table.Column<long>(type: "bigint", nullable: false),
-                    variant_id = table.Column<long>(type: "bigint", nullable: false),
+                    warehouse_id = table.Column<Guid>(type: "uuid", nullable: false),
+                    variant_id = table.Column<Guid>(type: "uuid", nullable: false),
                     quantity = table.Column<int>(type: "integer", nullable: false),
                     reserved = table.Column<int>(type: "integer", nullable: false),
                     updated_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
@@ -543,9 +575,9 @@ namespace Infrastructure.Persistence.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "ix_cart_items_variant_id",
+                name: "ix_cart_items_variant_id1",
                 table: "cart_items",
-                column: "variant_id");
+                column: "variant_id1");
 
             migrationBuilder.CreateIndex(
                 name: "ix_carts_user_id",
@@ -590,9 +622,9 @@ namespace Infrastructure.Persistence.Migrations
                 column: "order_id");
 
             migrationBuilder.CreateIndex(
-                name: "ix_orders_coupon_id",
+                name: "ix_orders_coupon_id1",
                 table: "orders",
-                column: "coupon_id");
+                column: "coupon_id1");
 
             migrationBuilder.CreateIndex(
                 name: "ix_orders_order_no",
@@ -648,6 +680,16 @@ namespace Infrastructure.Persistence.Migrations
                 filter: "deleted_at IS NULL");
 
             migrationBuilder.CreateIndex(
+                name: "ix_promotion_products_product_id",
+                table: "promotion_products",
+                column: "product_id");
+
+            migrationBuilder.CreateIndex(
+                name: "ix_promotion_products_promotion_id",
+                table: "promotion_products",
+                column: "promotion_id");
+
+            migrationBuilder.CreateIndex(
                 name: "ix_shipments_order_id",
                 table: "shipments",
                 column: "order_id");
@@ -665,9 +707,9 @@ namespace Infrastructure.Persistence.Migrations
                 filter: "deleted_at IS NULL");
 
             migrationBuilder.CreateIndex(
-                name: "ix_users_uuid",
+                name: "ix_users_id",
                 table: "users",
-                column: "uuid",
+                column: "id",
                 unique: true);
         }
 
@@ -699,6 +741,9 @@ namespace Infrastructure.Persistence.Migrations
                 name: "product_reviews");
 
             migrationBuilder.DropTable(
+                name: "promotion_products");
+
+            migrationBuilder.DropTable(
                 name: "shipments");
 
             migrationBuilder.DropTable(
@@ -715,6 +760,9 @@ namespace Infrastructure.Persistence.Migrations
 
             migrationBuilder.DropTable(
                 name: "categories");
+
+            migrationBuilder.DropTable(
+                name: "promotions");
 
             migrationBuilder.DropTable(
                 name: "orders");

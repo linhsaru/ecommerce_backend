@@ -15,6 +15,6 @@ public sealed class CreateCategoryRequest
     [MaxLength(200)]
     public string Slug { get; set; } = "";
 
-    public long? ParentId { get; set; }
+    public Guid? ParentId { get; set; }
     public int SortOrder { get; set; }
 }

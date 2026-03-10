@@ -1,4 +1,5 @@
-﻿using Domain.Entities;
+﻿using Application.Interfaces;
+using Domain.Entities;
 using Domain.Interfaces.Repositories;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -13,8 +14,8 @@ namespace Infrastructure.Repositories
     public class UserRepository : IUserRepository
     {
 
-        private readonly AppDbContext _context;
-        public UserRepository(AppDbContext context)
+        private readonly IAppDbContext _context;
+        public UserRepository(IAppDbContext context)
         {
             _context = context;
         }

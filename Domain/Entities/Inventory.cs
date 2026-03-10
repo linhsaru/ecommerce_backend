@@ -7,8 +7,8 @@ namespace Domain.Entities;
 /// </summary>
 public class Inventory
 {
-    public long WarehouseId { get; set; }
-    public long VariantId { get; set; }
+    public Guid WarehouseId { get; set; }
+    public Guid VariantId { get; set; }
     public int Quantity { get; set; }
     public int Reserved { get; set; }
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

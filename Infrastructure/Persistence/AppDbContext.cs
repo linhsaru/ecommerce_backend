@@ -1,10 +1,12 @@
-using System.Linq.Expressions;
-using System.Threading.Tasks;
-using Application.Interfaces;
+﻿using Application.Interfaces;
 using Domain.Common;
 using Domain.Entities;
 using Domain.Enums;
+using Domain.Helpers;
+using Infrastructure.Utils;
 using Microsoft.EntityFrameworkCore;
+using System.Linq.Expressions;
+using System.Threading.Tasks;
 
 namespace Infrastructure.Persistence;
 
@@ -36,6 +38,10 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
     public DbSet<ProductReview> ProductReviews => Set<ProductReview>();
+    public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
+
+    public DbSet<Role> Roles => Set<Role>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +51,21 @@ public class AppDbContext : DbContext, IAppDbContext
         modelBuilder.HasPostgresEnum<PaymentMethod>();
         modelBuilder.HasPostgresEnum<PaymentStatus>();
         modelBuilder.HasPostgresEnum<ShipmentStatus>();
+
+        modelBuilder.Entity<Role>().HasData(
+            new Role
+            {
+                Id = RoleHelper.GetId(UserRole.RoleAdmin),
+                RoleName = UserRole.RoleAdmin.ToString(),
+                Description = "Hệ thống quản trị"
+            },
+            new Role
+            {
+                Id = RoleHelper.GetId(UserRole.RoleUser),
+                RoleName = UserRole.RoleUser.ToString(),
+                Description = "Người dùng thông thường"
+            }
+        );
 
         // Global filter: bo qua ban ghi da soft delete (DeletedAt == null)
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

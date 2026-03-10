@@ -7,8 +7,8 @@ namespace Application.DTOs.Products;
 /// </summary>
 public class ProductDto
 {
-    public long Id { get; init; }
-    public long? BrandId { get; init; }
+    public Guid Id { get; init; }
+    public Guid? BrandId { get; init; }
     public string Name { get; init; } = "";
     public string Slug { get; init; } = "";
     public string? Description { get; init; }

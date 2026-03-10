@@ -1,10 +1,11 @@
-using System.Linq;
+﻿using System.Linq;
 using System.Threading.Tasks;
 using Application.Common;
 using Application.DTOs.Categories;
 using Application.Interfaces;
 using Application.Interfaces.Services;
 using Domain.Entities;
+using Domain.Interfaces.Repositories;
 using Microsoft.EntityFrameworkCore;
 
 namespace Application.Services;
@@ -14,21 +15,21 @@ namespace Application.Services;
 /// </summary>
 public sealed class CategoryService : ICategoryService
 {
-    private readonly IAppDbContext _db;
+    private readonly ICategoryRepository _repository;
 
-    public CategoryService(IAppDbContext db)
+    public CategoryService(ICategoryRepository repository)
     {
-        _db = db;
+        _repository = repository;
     }
 
     public async Task<Result<(List<CategoryDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, long? parentId, CancellationToken cancellationToken = default)
     {
-        var query = _db.Categories.AsNoTracking().Where(c => c.DeletedAt == null);
+        var query = _repository.GetQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(c => c.Name.Contains(search) || c.Slug.Contains(search));
         if (parentId.HasValue)
-            query = query.Where(c => c.ParentId == parentId.Value);
+            query = query.Where(c => c.ParentId.Equals(parentId.Value));
 
         var total = await query.LongCountAsync(cancellationToken);
         var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);
@@ -53,19 +54,17 @@ public sealed class CategoryService : ICategoryService
 
     public async Task<Result<CategoryDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
     {
-        var cat = await _db.Categories
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Slug == slug && c.DeletedAt == null, cancellationToken);
+        var cat = await _repository.GetBySlugAsync(slug, cancellationToken);
         if (cat == null)
-            return Result<CategoryDto?>.Fail("NOT_FOUND", "Category not found.");
+        {
+            return Result<CategoryDto?>.Fail("NOT_FOUND", "Category not found!");
+        }
         return Result<CategoryDto?>.Ok(Map(cat));
     }
 
-    public async Task<Result<CategoryDto?>> GetByIdAsync(long id, CancellationToken cancellationToken = default)
+    public async Task<Result<CategoryDto?>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var cat = await _db.Categories
-            .AsNoTracking()
-            .FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null, cancellationToken);
+        var cat = await _repository.GetByIdAsync(id, cancellationToken);
         if (cat == null)
             return Result<CategoryDto?>.Fail("NOT_FOUND", "Category not found.");
         return Result<CategoryDto?>.Ok(Map(cat));
@@ -73,16 +72,11 @@ public sealed class CategoryService : ICategoryService
 
     public async Task<Result<CategoryDto>> CreateAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default)
     {
-        var exists = await _db.Categories.AnyAsync(c => c.Slug == request.Slug && c.DeletedAt == null, cancellationToken);
-        if (exists)
+        if (await _repository.ExistsBySlugAsync(request.Slug, null, cancellationToken))
             return Result<CategoryDto>.Fail("VALIDATION_ERROR", "Slug already exists.");
 
-        if (request.ParentId.HasValue)
-        {
-            var parentExists = await _db.Categories.AnyAsync(c => c.Id == request.ParentId && c.DeletedAt == null, cancellationToken);
-            if (!parentExists)
-                return Result<CategoryDto>.Fail("VALIDATION_ERROR", "Parent category not found.");
-        }
+        if (request.ParentId.HasValue && !await _repository.ExistsByIdAsync(request.ParentId.Value, cancellationToken))
+            return Result<CategoryDto>.Fail("VALIDATION_ERROR", "Parent category not found.");
 
         var category = new Category
         {
@@ -91,39 +85,46 @@ public sealed class CategoryService : ICategoryService
             ParentId = request.ParentId,
             SortOrder = request.SortOrder
         };
-        _db.Categories.Add(category);
-        await _db.SaveChangesAsync(cancellationToken);
+
+        _repository.Add(category);
+        await _repository.SaveChangesAsync(cancellationToken); // Repo chịu trách nhiệm Save
+
         return Result<CategoryDto>.Ok(Map(category));
     }
 
-    public async Task<Result<CategoryDto>> UpdateAsync(long id, UpdateCategoryRequest request, CancellationToken cancellationToken = default)
+    public async Task<Result<CategoryDto>> UpdateAsync(Guid id, UpdateCategoryRequest request, CancellationToken cancellationToken = default)
     {
-        var category = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null, cancellationToken);
+        var category = await _repository.GetByIdAsync(id, cancellationToken);
         if (category == null)
             return Result<CategoryDto>.Fail("NOT_FOUND", "Category not found.");
 
+        if (request.Slug != null && await _repository.ExistsBySlugAsync(request.Slug, id, cancellationToken))
+            return Result<CategoryDto>.Fail("VALIDATION_ERROR", "Slug already exists.");
+
         if (request.Name != null) category.Name = request.Name;
-        if (request.Slug != null)
-        {
-            var exists = await _db.Categories.AnyAsync(c => c.Slug == request.Slug && c.Id != id && c.DeletedAt == null, cancellationToken);
-            if (exists)
-                return Result<CategoryDto>.Fail("VALIDATION_ERROR", "Slug already exists.");
-            category.Slug = request.Slug;
-        }
+        if (request.Slug != null) category.Slug = request.Slug;
         if (request.ParentId.HasValue) category.ParentId = request.ParentId;
         if (request.SortOrder.HasValue) category.SortOrder = request.SortOrder.Value;
+
         category.UpdatedAt = DateTimeOffset.UtcNow;
-        await _db.SaveChangesAsync(cancellationToken);
+
+        _repository.Update(category);
+        await _repository.SaveChangesAsync(cancellationToken);
+
         return Result<CategoryDto>.Ok(Map(category));
     }
 
-    public async Task<Result> DeleteAsync(long id, CancellationToken cancellationToken = default)
+    public async Task<Result> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        var category = await _db.Categories.FirstOrDefaultAsync(c => c.Id == id && c.DeletedAt == null, cancellationToken);
+        var category = await _repository.GetByIdAsync(id, cancellationToken);
         if (category == null)
             return Result.Fail("NOT_FOUND", "Category not found.");
+
         category.MarkDeleted(null);
-        await _db.SaveChangesAsync(cancellationToken);
+
+        _repository.Update(category);
+        await _repository.SaveChangesAsync(cancellationToken);
+
         return Result.Ok();
     }
 

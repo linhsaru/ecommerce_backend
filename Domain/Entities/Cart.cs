@@ -6,9 +6,9 @@ namespace Domain.Entities;
 /// <summary>
 /// Gio hang: user_id hoac session_id (khach vang lai).
 /// </summary>
-public class Cart : BaseEntity<long>
+public class Cart : BaseEntity<Guid>
 {
-    public long? UserId { get; set; }
+    public Guid? UserId { get; set; }
     public string? SessionId { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

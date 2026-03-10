@@ -3,9 +3,9 @@ using Domain.Common;
 /// <summary>
 /// Dia chi giao hang cua user: recipient, phone, line1, line2, ward, district, province, country.
 /// </summary>
-public class UserAddress : SoftDeleteEntity<long>
+public class UserAddress : SoftDeleteEntity<Guid>
 {
-    public long UserId { get; set; }
+    public Guid UserId { get; set; }
     public required string Recipient { get; set; }
     public required string Phone { get; set; }
     public required string Line1 { get; set; }

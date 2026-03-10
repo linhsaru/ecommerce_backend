@@ -5,11 +5,11 @@ namespace Domain.Entities;
 /// <summary>
 /// Dong don hang: snapshot sku, name, variant_name, unit_price, quantity, line_total.
 /// </summary>
-public class OrderItem : BaseEntity<long>
+public class OrderItem : BaseEntity<Guid>
 {
-    public long OrderId { get; set; }
-    public long ProductId { get; set; }
-    public long VariantId { get; set; }
+    public Guid OrderId { get; set; }
+    public Guid ProductId { get; set; }
+    public Guid VariantId { get; set; }
     public required string Sku { get; set; }
     public required string Name { get; set; }
     public string? VariantName { get; set; }

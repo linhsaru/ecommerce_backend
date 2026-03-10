@@ -5,7 +5,7 @@ namespace Domain.Entities;
 /// <summary>
 /// Ma giam gia: code, discount_type (percent|fixed), discount_value, min_order_value, max_discount, usage_limit, start_at, end_at, status.
 /// </summary>
-public class Coupon : BaseEntity<long>
+public class Coupon : BaseEntity<Guid>
 {
     public required string Code { get; set; }
     public string? Name { get; set; }

@@ -7,7 +7,7 @@ namespace Domain.Entities;
 /// </summary>
 public class CartItem
 {
-    public long CartId { get; set; }
+    public Guid CartId { get; set; }
     public long VariantId { get; set; }
     public int Quantity { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
