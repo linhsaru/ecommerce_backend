@@ -1,4 +1,4 @@
-namespace Domain.Entities;
+﻿namespace Domain.Entities;
 using Domain.Common;
 /// <summary>
 /// Bien the san pham (size/color): sku, variant_name, attributes (jsonb), price, compare_at, cost, weight_gram, status.
@@ -6,7 +6,7 @@ using Domain.Common;
 public class ProductVariant : SoftDeleteEntity<Guid>
 {
     public Guid ProductId { get; set; }
-    public required string Sku { get; set; }
+    public required string Sku { get; set; } //Stock keeping unit - mã định danh của biến thể
     public string? VariantName { get; set; }
     /// <summary>VD: {"size":"M","color":"Red"}</summary>
     public string? Attributes { get; set; }

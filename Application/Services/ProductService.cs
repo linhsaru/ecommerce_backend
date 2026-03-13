@@ -22,7 +22,7 @@ public sealed class ProductService : IProductService
         _productRepo = productRepo;
     }
 
-    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, CancellationToken cancellationToken = default)
+    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid> categoryId, CancellationToken cancellationToken = default)
     {
         var query = _productRepo.GetQueryable();
 
@@ -30,6 +30,12 @@ public sealed class ProductService : IProductService
             query = query.Where(p => p.Name.Contains(search) || (p.Slug != null && p.Slug.Contains(search)));
         if (status.HasValue)
             query = query.Where(p => p.Status == status.Value);
+
+        if(categoryId != null && categoryId.Any())
+        {
+            query = query.Where(p =>
+            p.ProductCategories.Any(pc => categoryId.Contains(pc.CategoryId)));
+        }
 
         var total = await query.LongCountAsync(cancellationToken);
         var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);
@@ -41,11 +47,44 @@ public sealed class ProductService : IProductService
             {
                 Id = p.Id,
                 BrandId = p.BrandId,
+                BrandName = p.Brand != null ? p.Brand.Name : null,
                 Name = p.Name,
                 Slug = p.Slug,
                 Description = p.Description,
                 Status = p.Status,
                 ThumbnailUrl = p.ThumbnailUrl,
+                // Gia goc (uu tien CompareAt, neu null thi dung Price)
+                OriginalPrice = p.ProductVariants
+                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                    .OrderBy(v => v.Price)
+                    .Select(v => (decimal?)Math.Round((v.CompareAt ?? v.Price),2))
+                    .FirstOrDefault(),
+                // Gia sau giam (chinh la gia hien tai)
+                DiscountedPrice = p.ProductVariants
+                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                    .OrderBy(v => v.Price)
+                    .Select(v => (decimal?)Math.Round(v.Price, 2) ?? (decimal?)0)
+                    .FirstOrDefault(),
+                // Phan tram giam gia (%)
+                DiscountPercent = p.ProductVariants
+                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                    .OrderBy(v => v.Price)
+                    .Select(v =>
+                        v.CompareAt != null && v.CompareAt > 0 && v.Price < v.CompareAt
+                            ? (decimal?)Math.Round(((v.CompareAt.Value - v.Price) / v.CompareAt.Value * 100), 2)
+                            : (decimal?)null
+                    )
+                    .FirstOrDefault(),
+                // Danh sach anh san pham
+                imageProduct = p.ProductImages
+                    .OrderBy(img => img.SortOrder)
+                    .Select(img => new ProductImageDto
+                    {
+                        Id = img.Id,
+                        Url = img.Url,
+                        Alt = img.Alt,
+                        SortOrder = img.SortOrder
+                    }),
                 CreatedAt = p.CreatedAt,
                 UpdatedAt = p.UpdatedAt
             })
@@ -104,6 +143,7 @@ public sealed class ProductService : IProductService
         {
             Id = product.Id,
             BrandId = product.BrandId,
+            BrandName = product.Brand?.Name,
             Name = product.Name,
             Slug = product.Slug,
             Description = product.Description,
@@ -172,6 +212,20 @@ public sealed class ProductService : IProductService
 
     private static ProductDetailDto MapToDetail(Product p)
     {
+        var activeVariants = p.ProductVariants
+            .Where(v => v.DeletedAt == null && v.Status == 1)
+            .OrderBy(v => v.Price)
+            .ToList();
+
+        decimal? discountedPrice = activeVariants.FirstOrDefault()?.Price;
+        decimal? originalPrice = activeVariants.FirstOrDefault()?.CompareAt ?? discountedPrice;
+        decimal? discountPercent = null;
+
+        if (originalPrice.HasValue && originalPrice.Value > 0 && discountedPrice.HasValue && discountedPrice.Value < originalPrice.Value)
+        {
+            discountPercent = (originalPrice.Value - discountedPrice.Value) / originalPrice.Value * 100;
+        }
+
         return new ProductDetailDto
         {
             Id = p.Id,
@@ -181,6 +235,9 @@ public sealed class ProductService : IProductService
             Description = p.Description,
             Status = p.Status,
             ThumbnailUrl = p.ThumbnailUrl,
+            OriginalPrice = originalPrice,
+            DiscountedPrice = discountedPrice,
+            DiscountPercent = discountPercent,
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt,
             BrandName = p.Brand?.Name,

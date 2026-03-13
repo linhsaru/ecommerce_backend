@@ -35,6 +35,17 @@ public static class DependencyInjection
                    .UseSnakeCaseNamingConvention();
         });
 
+        services.AddCors(options =>
+        {
+            options.AddPolicy("AllowFEApp",
+                policy =>
+                {
+                    policy.WithOrigins("http://localhost:5173", "http://localhost:3000")
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                });
+        });
+
         // Map PostgreSQL enum types (ten phai trung schema: order_status, payment_status, ...)
         NpgsqlConnection.GlobalTypeMapper.MapEnum<OrderStatus>("order_status");
         NpgsqlConnection.GlobalTypeMapper.MapEnum<PaymentStatus>("payment_status");
@@ -72,12 +83,17 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
-
+        services.AddScoped<ICartService, CartService>();
+        services.AddScoped<IBrandService, BrandService>();
 
         //Repositories
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<ICartRepository, CartRepository>();
+        services.AddScoped<IInventoryRepository, InventoryRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
+        services.AddScoped<IBrandRepository, BrandRepository>();
 
 
         return services;

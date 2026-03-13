@@ -1,4 +1,4 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
 using Domain.Entities;
 using Domain.Interfaces.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -38,10 +38,26 @@ namespace Infrastructure.Repositories
             => await _db.Products.AnyAsync(p => p.Slug == slug && !p.Id.Equals(excludeId) && p.DeletedAt == null, ct);
 
         public async Task<Product?> GetByIdAsync(Guid id, CancellationToken ct = default)
-            => await _db.Products.FirstOrDefaultAsync(p => p.Id.Equals(id) && p.DeletedAt == null, ct);
+            => await _db.Products
+                .Include(p => p.Brand)
+                .Include(p => p.ProductCategories)
+                    .ThenInclude(pc => pc.Category)
+                .Include(p => p.ProductImages)
+                .Include(p => p.ProductVariants)
+                .FirstOrDefaultAsync(p => p.Id.Equals(id) && p.DeletedAt == null, ct);
+
+        public async Task<ProductVariant?> GetVariantByIdAsync(Guid variantId, CancellationToken ct = default)
+            => await _db.ProductVariants.FirstOrDefaultAsync(v => v.Id == variantId && v.DeletedAt == null, ct);
 
         public async Task<Product?> GetBySlugAsync(string slug, CancellationToken ct = default)
-            => await _db.Products.FirstOrDefaultAsync(p => p.Slug == slug && p.DeletedAt == null, ct);
+            => await _db.Products
+                .Include(p => p.Brand)
+                .Include(p => p.ProductCategories)
+                    .ThenInclude(pc => pc.Category)
+                .Include(p => p.ProductImages)
+                .Include(p => p.ProductVariants)
+                .FirstOrDefaultAsync(p => p.Slug == slug && p.DeletedAt == null, ct);
+
 
         public IQueryable<Product> GetQueryable()
             => _db.Products.AsNoTracking().Where(p => p.DeletedAt == null);

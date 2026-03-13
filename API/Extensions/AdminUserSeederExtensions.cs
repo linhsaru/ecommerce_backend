@@ -35,7 +35,7 @@ public static class AdminUserSeederExtensions
         }
 
         var existingAdmin = await dbContext.Users
-            .FirstOrDefaultAsync(u => u.Email == adminEmail);
+            .FirstOrDefaultAsync(u => u.Username == adminUserName);
 
         if (existingAdmin != null)
         {

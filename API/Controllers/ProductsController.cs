@@ -12,7 +12,7 @@ namespace API.Controllers;
 /// REST API cho san pham: GET phan trang, GET theo id/slug, POST tao, PUT cap nhat, DELETE xoa mem.
 /// </summary>
 [ApiController]
-[Route("api/products")]
+[Route("products")]
 public class ProductsController : BaseApiController
 {
     private readonly IProductService _productService;
@@ -32,9 +32,10 @@ public class ProductsController : BaseApiController
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,
         [FromQuery] int? status = null,
+        [FromQuery] List<Guid> categoryId = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _productService.GetPagedAsync(page, pageSize, search, status, cancellationToken);
+        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId, cancellationToken);
         if (result.IsFailure)
             return ResultToStatus(result, "Products");
 
@@ -46,7 +47,7 @@ public class ProductsController : BaseApiController
     /// <summary>
     /// GET /api/products/{id}
     /// </summary>
-    [HttpGet("{id:long}")]
+    [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<ProductDetailDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken = default)
