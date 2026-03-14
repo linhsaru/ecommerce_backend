@@ -30,7 +30,7 @@ public class CategoriesController : BaseApiController
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,
-        [FromQuery] long? parentId = null,
+        [FromQuery] Guid? parentId = null,
         CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.GetPagedAsync(page, pageSize, search, parentId, cancellationToken);
@@ -47,7 +47,7 @@ public class CategoriesController : BaseApiController
     /// <summary>
     /// GET categories/{id}
     /// </summary>
-    [HttpGet("{id:long}")]
+    [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken = default)
@@ -97,7 +97,7 @@ public class CategoriesController : BaseApiController
     /// <summary>
     /// PUT categories/{id}
     /// </summary>
-    [HttpPut("{id:long}")]
+    [HttpPut("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -114,7 +114,7 @@ public class CategoriesController : BaseApiController
     /// <summary>
     /// DELETE categories/{id}
     /// </summary>
-    [HttpDelete("{id:long}")]
+    [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken = default)
