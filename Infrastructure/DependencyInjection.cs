@@ -81,10 +81,14 @@ public static class DependencyInjection
         //Services
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserService, UserService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IBrandService, BrandService>();
+        services.AddScoped<IPromotionService, PromotionService>();
+        services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<ICouponService, CouponService>();
 
         //Repositories
         services.AddScoped<IUserRepository, UserRepository>();
@@ -92,6 +96,8 @@ public static class DependencyInjection
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
+        services.AddScoped<IPromotionRepository, PromotionRepository>();
+        services.AddScoped<ICouponRepository, CouponRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IBrandRepository, BrandRepository>();
 

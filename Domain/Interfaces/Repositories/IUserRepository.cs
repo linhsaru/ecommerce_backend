@@ -1,17 +1,15 @@
-﻿using Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Domain.Entities;
 
 namespace Domain.Interfaces.Repositories
 {
     public interface IUserRepository
     {
+        IQueryable<User> GetQueryable();
         Task<User?> GetUserAsync(string userInfo, CancellationToken cancellationToken);
         Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
+        Task<bool> ExistsByEmailAsync(string email, Guid? excludeId = null, CancellationToken cancellationToken = default);
         Task AddAsync(User user, CancellationToken cancellationToken);
-        Task UpdateAsync(User user);
+        void Update(User user);
+        Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     }
 }

@@ -1,52 +1,42 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
 using Domain.Entities;
 using Domain.Interfaces.Repositories;
-using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Infrastructure.Repositories
 {
     public class UserRepository : IUserRepository
     {
-
         private readonly IAppDbContext _context;
-        public UserRepository(IAppDbContext context)
-        {
-            _context = context;
-        }
+
+        public UserRepository(IAppDbContext context) => _context = context;
+
+        public IQueryable<User> GetQueryable()
+            => _context.Users.AsNoTracking().Where(u => u.DeletedAt == null);
 
         public async Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
-        {
-            return await _context.Users
-                .FirstOrDefaultAsync(u => u.Id.Equals(id), cancellationToken);
-        }
+            => await _context.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null, cancellationToken);
 
         public async Task<User?> GetUserAsync(string userInfo, CancellationToken cancellationToken)
-        {
-            return await _context.Users
-                .FirstOrDefaultAsync(u => u.Email == userInfo || u.FullName == userInfo, cancellationToken);
-        }
+            => await _context.Users
+                .FirstOrDefaultAsync(u => (u.Email == userInfo || u.Username == userInfo) && u.DeletedAt == null, cancellationToken);
+
+        public async Task<bool> ExistsByEmailAsync(string email, Guid? excludeId = null, CancellationToken cancellationToken = default)
+            => await _context.Users
+                .AnyAsync(u => u.Email == email && u.DeletedAt == null && (excludeId == null || u.Id != excludeId.Value), cancellationToken);
 
         public async Task AddAsync(User user, CancellationToken cancellationToken)
         {
             await _context.Users.AddAsync(user, cancellationToken);
-
-            // Lưu thay đổi vào Database
             await _context.SaveChangesAsync(cancellationToken);
         }
 
-        public async Task UpdateAsync(User user)
-        {
-            _context.Users.Update(user);
+        public void Update(User user) => _context.Users.Update(user);
 
-            // Lưu thay đổi
-            await _context.SaveChangesAsync();
-        }
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+            => _context.SaveChangesAsync(cancellationToken);
     }
 }
 
