@@ -4,6 +4,7 @@ using Application.Common;
 using Application.DTOs.Carts;
 using Application.Interfaces.Services;
 using Domain.Interfaces.Repositories;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers;
@@ -11,6 +12,7 @@ namespace API.Controllers;
 // Giỏ hàng: không bắt buộc đăng nhập. Khách → frontend lưu LocalStorage; đã đăng nhập → lưu DB, kiểm tra tồn kho.
 [ApiController]
 [Route("cart")]
+[Authorize]
 public class CartController : BaseApiController
 {
     private readonly ICartService _cartService;
@@ -26,6 +28,7 @@ public class CartController : BaseApiController
     [HttpPost("items")]
     [ProducesResponseType(typeof(ApiResponse<CartResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [AllowAnonymous]
     public async Task<IActionResult> AddToCart([FromBody] AddToCartDto dto, CancellationToken cancellationToken = default)
     {
         var userId = await GetCurrentUserIdAsync(cancellationToken);
@@ -36,6 +39,7 @@ public class CartController : BaseApiController
     // Xem giỏ hàng. Không auth: trả giỏ rỗng (frontend đọc từ LocalStorage). Có auth: trả giỏ từ DB.
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<CartResponse>), StatusCodes.Status200OK)]
+    [AllowAnonymous]
     public async Task<IActionResult> GetCart(CancellationToken cancellationToken = default)
     {
         var userId = await GetCurrentUserIdAsync(cancellationToken);

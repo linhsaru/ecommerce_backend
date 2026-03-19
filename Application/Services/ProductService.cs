@@ -261,7 +261,14 @@ public sealed class ProductService : IProductService
                 VariantName = v.VariantName,
                 Price = v.Price,
                 CompareAt = v.CompareAt,
-                Status = v.Status
+                Status = v.Status,
+                Specifications = v.ProductVariantSpecifications
+                    .Select(s => new SpecificationItemDto
+                    {
+                        Name = s.SpecificationType.Name,
+                        Unit = s.SpecificationType.Unit,
+                        Value = s.Value
+                    }).ToList()
             }).ToList()
         };
     }

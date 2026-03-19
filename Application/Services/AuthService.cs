@@ -50,13 +50,13 @@ namespace Application.Services
             {
                 return Result<LoginResponse>.Fail("AUTH_001", "Email hoặc mật khẩu không chính xác.");
             }
-
-            // 4. Tạo access token, refresh token và trả về LoginResponse
-            var accessToken = _jwtTokenGenerator.GenerateToken(user.Username);
-            var refreshToken = _jwtTokenGenerator.GenerateRefreshToken(user.Username);
                 
             var role = await _roleRepository.GetRoleAsync(user.RoleId ?? Guid.Empty, cancellationToken);
-                
+
+            // 4. Tạo access token, refresh token và trả về LoginResponse
+            var accessToken = _jwtTokenGenerator.GenerateToken(user.Id, user.Username, role.RoleName);
+            var refreshToken = _jwtTokenGenerator.GenerateRefreshToken(user.Id, user.Username);
+
             var loginResponse = new LoginResponse
             {
                 AccessToken = accessToken,

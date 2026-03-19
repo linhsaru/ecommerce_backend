@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Threading.Tasks;
 using Application.Common;
 using Application.DTOs.Categories;
@@ -22,14 +22,14 @@ public sealed class CategoryService : ICategoryService
         _repository = repository;
     }
 
-    public async Task<Result<(List<CategoryDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, long? parentId, CancellationToken cancellationToken = default)
+    public async Task<Result<(List<CategoryDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, Guid? parentId, CancellationToken cancellationToken = default)
     {
         var query = _repository.GetQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(c => c.Name.Contains(search) || c.Slug.Contains(search));
         if (parentId.HasValue)
-            query = query.Where(c => c.ParentId.Equals(parentId.Value));
+            query = query.Where(c => c.ParentId == parentId.Value);
 
         var total = await query.LongCountAsync(cancellationToken);
         var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);

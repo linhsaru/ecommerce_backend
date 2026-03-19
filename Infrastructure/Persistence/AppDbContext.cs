@@ -70,10 +70,10 @@ public class AppDbContext : DbContext, IAppDbContext
         // Global filter: bo qua ban ghi da soft delete (DeletedAt == null)
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (typeof(SoftDeleteEntity<long>).IsAssignableFrom(entityType.ClrType))
+            if (typeof(SoftDeleteEntity<Guid>).IsAssignableFrom(entityType.ClrType))
             {
                 var parameter = Expression.Parameter(entityType.ClrType, "e");
-                var property = Expression.Property(parameter, nameof(SoftDeleteEntity<long>.DeletedAt));
+                var property = Expression.Property(parameter, nameof(SoftDeleteEntity<Guid>.DeletedAt));
                 var condition = Expression.Equal(property, Expression.Constant(null, typeof(DateTimeOffset?)));
                 var lambda = Expression.Lambda(condition, parameter);
                 modelBuilder.Entity(entityType.ClrType).HasQueryFilter(lambda);
@@ -83,10 +83,13 @@ public class AppDbContext : DbContext, IAppDbContext
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var entry in ChangeTracker.Entries<AuditableEntity<long>>())
+        foreach (var entry in ChangeTracker.Entries())
         {
-            if (entry.State == EntityState.Modified)
-                entry.Entity.UpdatedAt = DateTimeOffset.UtcNow;
+            if(entry.Entity is AuditableEntity<Guid> auditable)
+            {
+                if (entry.State == EntityState.Modified)
+                    auditable.UpdatedAt = DateTimeOffset.UtcNow;
+            }
         }
         return base.SaveChangesAsync(cancellationToken);
     }

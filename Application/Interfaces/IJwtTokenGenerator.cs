@@ -9,7 +9,7 @@ namespace Application.Interfaces
 {
     public interface IJwtTokenGenerator
     {
-        string GenerateToken(string username);
-        string GenerateRefreshToken(string username);
+        string GenerateToken(Guid userId, string username, string role);
+        string GenerateRefreshToken(Guid userId, string username);
     }
 }

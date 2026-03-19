@@ -121,6 +121,46 @@ public sealed class UserService : IUserService
         return Result.Ok();
     }
 
+    public async Task<Result<UserDto>> UpdateUserRoleAsync(Guid id, Guid roleId, CancellationToken cancellationToken = default)
+    {
+        var user = await _userRepo.GetByIdAsync(id, cancellationToken);
+        if (user == null)
+            return Result<UserDto>.Fail("NOT_FOUND", "User not found.");
+
+        // Validate role exists
+        try
+        {
+            await _roleRepo.GetRoleAsync(roleId, cancellationToken);
+        }
+        catch (KeyNotFoundException)
+        {
+            return Result<UserDto>.Fail("NOT_FOUND", "Role not found.");
+        }
+
+        user.RoleId = roleId;
+
+        _userRepo.Update(user);
+        await _userRepo.SaveChangesAsync(cancellationToken);
+
+        var updated = await _userRepo.GetByIdAsync(id, cancellationToken);
+        return Result<UserDto>.Ok(Map(updated!));
+    }
+
+    public async Task<Result<UserDto>> RemoveUserRoleAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var user = await _userRepo.GetByIdAsync(id, cancellationToken);
+        if (user == null)
+            return Result<UserDto>.Fail("NOT_FOUND", "User not found.");
+
+        user.RoleId = null;
+
+        _userRepo.Update(user);
+        await _userRepo.SaveChangesAsync(cancellationToken);
+
+        var updated = await _userRepo.GetByIdAsync(id, cancellationToken);
+        return Result<UserDto>.Ok(Map(updated!));
+    }
+
     private static UserDto Map(User u) => new()
     {
         Id = u.Id,

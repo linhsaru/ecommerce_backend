@@ -73,6 +73,24 @@ public class UsersController : BaseApiController
         return NoContent();
     }
 
+    [HttpPost("{id:guid}/role")]
+    [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateRole(Guid id, [FromBody] UpdateUserRoleRequest request, CancellationToken cancellationToken = default)
+    {
+        var result = await _userService.UpdateUserRoleAsync(id, request.RoleId, cancellationToken);
+        return result.ToActionResult(this);
+    }
+
+    [HttpDelete("{id:guid}/role")]
+    [ProducesResponseType(typeof(ApiResponse<UserDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveRole(Guid id, CancellationToken cancellationToken = default)
+    {
+        var result = await _userService.RemoveUserRoleAsync(id, cancellationToken);
+        return result.ToActionResult(this);
+    }
+
     private IActionResult ResultToStatus(Result result, string resourceName)
     {
         var traceId = HttpContext.TraceIdentifier;

@@ -44,6 +44,8 @@ namespace Infrastructure.Repositories
                     .ThenInclude(pc => pc.Category)
                 .Include(p => p.ProductImages)
                 .Include(p => p.ProductVariants)
+                    .ThenInclude(v => v.ProductVariantSpecifications)
+                        .ThenInclude(s => s.SpecificationType)
                 .FirstOrDefaultAsync(p => p.Id.Equals(id) && p.DeletedAt == null, ct);
 
         public async Task<ProductVariant?> GetVariantByIdAsync(Guid variantId, CancellationToken ct = default)
@@ -56,6 +58,8 @@ namespace Infrastructure.Repositories
                     .ThenInclude(pc => pc.Category)
                 .Include(p => p.ProductImages)
                 .Include(p => p.ProductVariants)
+                    .ThenInclude(v => v.ProductVariantSpecifications)
+                        .ThenInclude(s => s.SpecificationType)
                 .FirstOrDefaultAsync(p => p.Slug == slug && p.DeletedAt == null, ct);
 
 

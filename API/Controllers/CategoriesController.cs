@@ -3,6 +3,8 @@ using API.Common;
 using API.Contracts;
 using Application.DTOs.Categories;
 using Application.Interfaces.Services;
+using Domain.Enums;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace API.Controllers;
@@ -12,6 +14,7 @@ namespace API.Controllers;
 /// </summary>
 [ApiController]
 [Route("categories")]
+[Authorize]
 public class CategoriesController : BaseApiController
 {
     private readonly ICategoryService _categoryService;
@@ -26,6 +29,7 @@ public class CategoriesController : BaseApiController
     /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<CategoryDto>>), StatusCodes.Status200OK)]
+    [AllowAnonymous]
     public async Task<IActionResult> GetPaged(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
@@ -50,6 +54,7 @@ public class CategoriesController : BaseApiController
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [AllowAnonymous]
     public async Task<IActionResult> GetById(Guid id, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.GetByIdAsync(id, cancellationToken);
@@ -66,6 +71,7 @@ public class CategoriesController : BaseApiController
     [HttpGet("slug/{slug}")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [AllowAnonymous]
     public async Task<IActionResult> GetBySlug(string slug, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.GetBySlugAsync(slug, cancellationToken);
@@ -83,6 +89,7 @@ public class CategoriesController : BaseApiController
     [Route("category")]
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [Authorize(Roles = nameof(UserRole.RoleAdmin))]
     public async Task<IActionResult> Create([FromBody] CreateCategoryRequest request, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.CreateAsync(request, cancellationToken);
@@ -101,6 +108,7 @@ public class CategoriesController : BaseApiController
     [ProducesResponseType(typeof(ApiResponse<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Authorize(Roles = nameof(UserRole.RoleAdmin))]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateCategoryRequest request, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.UpdateAsync(id, request, cancellationToken);
@@ -117,6 +125,7 @@ public class CategoriesController : BaseApiController
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [Authorize(Roles = nameof(UserRole.RoleAdmin))]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken = default)
     {
         var result = await _categoryService.DeleteAsync(id, cancellationToken);
