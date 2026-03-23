@@ -16,13 +16,15 @@ namespace Application.Services;
 public sealed class ProductService : IProductService
 {
     private readonly IProductRepository _productRepo;
+    private readonly ICategoryRepository _categoryRepo;
 
-    public ProductService(IProductRepository productRepo)
+    public ProductService(IProductRepository productRepo, ICategoryRepository categoryRepo)
     {
         _productRepo = productRepo;
+        _categoryRepo = categoryRepo;
     }
 
-    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid> categoryId, CancellationToken cancellationToken = default)
+    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid>? categoryId, string? categorySlug, CancellationToken cancellationToken = default)
     {
         var query = _productRepo.GetQueryable();
 
@@ -31,10 +33,20 @@ public sealed class ProductService : IProductService
         if (status.HasValue)
             query = query.Where(p => p.Status == status.Value);
 
-        if(categoryId != null && categoryId.Any())
+        if (!string.IsNullOrWhiteSpace(categorySlug))
+        {
+            var slug = NormalizeCategorySlug(categorySlug);
+            var category = await _categoryRepo.GetBySlugAsync(slug, cancellationToken);
+            if (category == null)
+                return Result<(List<ProductDto> Items, long Total)>.Fail("NOT_FOUND", "Category not found.");
+
+            query = query.Where(p =>
+                p.ProductCategories.Any(pc => pc.Category.Slug == slug));
+        }
+        else if (categoryId != null && categoryId.Any())
         {
             query = query.Where(p =>
-            p.ProductCategories.Any(pc => categoryId.Contains(pc.CategoryId)));
+                p.ProductCategories.Any(pc => categoryId.Contains(pc.CategoryId)));
         }
 
         var total = await query.LongCountAsync(cancellationToken);
@@ -92,6 +104,9 @@ public sealed class ProductService : IProductService
 
         return Result<(List<ProductDto> Items, long Total)>.Ok((items, total));
     }
+
+    private static string NormalizeCategorySlug(string slug)
+        => slug.Trim().ToLowerInvariant();
 
     public async Task<Result<ProductDetailDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
     {

@@ -26,21 +26,42 @@ public class ProductsController : BaseApiController
         _productService = productService;
     }
 
-    /// <summary>
-    /// GET /api/products?page=1&pageSize=10&search=...&status=1
-    /// </summary>
+    
     [HttpGet]
     [ProducesResponseType(typeof(ApiResponse<PagedResponse<ProductDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     [AllowAnonymous]
     public async Task<IActionResult> GetPaged(
         [FromQuery] int page = 1,
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,
         [FromQuery] int? status = null,
-        [FromQuery] List<Guid> categoryId = null,
+        [FromQuery] List<Guid>? categoryId = null,
+        [FromQuery] string? categorySlug = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId, cancellationToken);
+        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId, categorySlug, cancellationToken);
+        if (result.IsFailure)
+            return ResultToStatus(result, "Products");
+
+        var (items, total) = result.Value!;
+        var response = PagedResponse<ProductDto>.Create(items, page, pageSize, total);
+        return Ok(ApiResponse<PagedResponse<ProductDto>>.Ok(response, traceId: HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("by-category/{categorySlug}")]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<ProductDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetByCategorySlug(
+        string categorySlug,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null,
+        [FromQuery] int? status = null,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId: null, categorySlug, cancellationToken);
         if (result.IsFailure)
             return ResultToStatus(result, "Products");
 
