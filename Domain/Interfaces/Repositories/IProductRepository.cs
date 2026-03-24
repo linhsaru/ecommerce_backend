@@ -13,6 +13,7 @@ namespace Domain.Interfaces.Repositories
         Task<Product?> GetByIdAsync(Guid id, CancellationToken ct = default);
         Task<ProductVariant?> GetVariantByIdAsync(Guid variantId, CancellationToken ct = default);
         Task<Product?> GetBySlugAsync(string slug, CancellationToken ct = default);
+        Task<List<ProductVariant>> GetVariantsByProductIdAsync(Guid productId, CancellationToken ct = default);
         Task<bool> ExistsBySlugAsync(string slug, Guid? excludeId = null, CancellationToken ct = default);
         Task<bool> ExistsByIdAsync(Guid id, CancellationToken ct = default);
         void Add(Product product);

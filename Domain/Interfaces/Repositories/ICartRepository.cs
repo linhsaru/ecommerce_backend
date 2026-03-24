@@ -11,6 +11,7 @@ namespace Domain.Interfaces.Repositories
     {
         Task<Cart?> GetCartUserByUserId(Guid userId);
         Task CreateCartAsync(Cart cart);
+        void RemoveCartItem(CartItem item);
         Task SaveChangesAsync();
     }
 }

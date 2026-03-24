@@ -70,6 +70,17 @@ public class ProductsController : BaseApiController
         return Ok(ApiResponse<PagedResponse<ProductDto>>.Ok(response, traceId: HttpContext.TraceIdentifier));
     }
 
+    
+    [HttpGet("{id:guid}/variants")]
+    [ProducesResponseType(typeof(ApiResponse<List<ProductVariantDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetVariantsByProductId(Guid id, CancellationToken cancellationToken = default)
+    {
+        var result = await _productService.GetVariantsByProductIdAsync(id, cancellationToken);
+        return result.ToActionResult(this);
+    }
+
     /// <summary>
     /// GET /api/products/{id}
     /// </summary>

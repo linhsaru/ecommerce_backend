@@ -44,6 +44,8 @@ namespace Application.Services
                     VariantId = dto.VariantId,
                     Quantity = dto.Quantity,
                     ProductName = product?.Name,
+                    ProductSlug = product?.Slug,
+                    ProductImage = product?.ThumbnailUrl,
                     VariantName = variant.VariantName,
                     Price = variant.Price
                 };
@@ -106,6 +108,56 @@ namespace Application.Services
             return Result<CartResponse>.Ok(response);
         }
 
+        public async Task<Result<CartResponse>> RemoveFromCartAsync(Guid userId, Guid variantId, CancellationToken cancellationToken = default)
+        {
+            var cart = await _cartRepository.GetCartUserByUserId(userId);
+            if (cart == null)
+                return Result<CartResponse>.Fail("NOT_FOUND", "Chưa có giỏ hàng.");
+
+            var item = cart.CartItems?.FirstOrDefault(ci => ci.VariantId == variantId);
+            if (item == null)
+                return Result<CartResponse>.Fail("NOT_FOUND", "Sản phẩm không có trong giỏ hàng.");
+
+            _cartRepository.RemoveCartItem(item);
+            await _cartRepository.SaveChangesAsync();
+
+            cart = await _cartRepository.GetCartUserByUserId(userId);
+            var response = MapCartToResponse(cart, isGuest: false);
+            return Result<CartResponse>.Ok(response);
+        }
+
+        public async Task<Result<CartResponse>> UpdateCartItemQuantityAsync(Guid userId, Guid variantId, int delta, CancellationToken cancellationToken = default)
+        {
+            if (delta == 0)
+                return Result<CartResponse>.Fail("InvalidDelta", "Delta phải khác 0.");
+
+            var cart = await _cartRepository.GetCartUserByUserId(userId);
+            if (cart == null)
+                return Result<CartResponse>.Fail("NOT_FOUND", "Chưa có giỏ hàng.");
+
+            var item = cart.CartItems?.FirstOrDefault(ci => ci.VariantId == variantId);
+            if (item == null)
+                return Result<CartResponse>.Fail("NOT_FOUND", "Sản phẩm không có trong giỏ hàng.");
+
+            var nextQty = item.Quantity + delta;
+            if (nextQty <= 0)
+            {
+                _cartRepository.RemoveCartItem(item);
+                await _cartRepository.SaveChangesAsync();
+                cart = await _cartRepository.GetCartUserByUserId(userId);
+                return Result<CartResponse>.Ok(MapCartToResponse(cart, isGuest: false));
+            }
+
+            var totalStock = await _inventoryRepository.GetTotalStockAsync(variantId, cancellationToken);
+            if (totalStock < nextQty)
+                return Result<CartResponse>.Fail("InsufficientStock", "Tổng số lượng trong giỏ vượt quá tồn kho");
+
+            item.Quantity = nextQty;
+            await _cartRepository.SaveChangesAsync();
+            cart = await _cartRepository.GetCartUserByUserId(userId);
+            return Result<CartResponse>.Ok(MapCartToResponse(cart, isGuest: false));
+        }
+
         private static CartResponse MapCartToResponse(Cart? cart, bool isGuest)
         {
             if (cart?.CartItems == null || !cart.CartItems.Any())
@@ -117,6 +169,8 @@ namespace Application.Services
                 VariantId = ci.VariantId,
                 Quantity = ci.Quantity,
                 ProductName = ci.Variant?.Product?.Name,
+                ProductSlug = ci.Variant?.Product?.Slug,
+                ProductImage = ci.Variant?.Product?.ThumbnailUrl,
                 VariantName = ci.Variant?.VariantName,
                 Price = ci.Variant?.Price ?? 0
             }).ToList();

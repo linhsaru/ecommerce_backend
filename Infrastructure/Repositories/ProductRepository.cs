@@ -62,6 +62,15 @@ namespace Infrastructure.Repositories
                         .ThenInclude(s => s.SpecificationType)
                 .FirstOrDefaultAsync(p => p.Slug == slug && p.DeletedAt == null, ct);
 
+        public async Task<List<ProductVariant>> GetVariantsByProductIdAsync(Guid productId, CancellationToken ct = default)
+            => await _db.ProductVariants
+                .AsNoTracking()
+                .Where(v => v.ProductId == productId && v.DeletedAt == null)
+                .Include(v => v.ProductVariantSpecifications)
+                    .ThenInclude(s => s.SpecificationType)
+                .OrderBy(v => v.Price)
+                .ThenBy(v => v.Sku)
+                .ToListAsync(ct);
 
         public IQueryable<Product> GetQueryable()
             => _db.Products.AsNoTracking().Where(p => p.DeletedAt == null);

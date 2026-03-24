@@ -89,6 +89,7 @@ public static class DependencyInjection
         services.AddScoped<IPromotionService, PromotionService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<ICouponService, CouponService>();
+        services.AddScoped<IPaymentService, PaymentService>();
 
         //Repositories
         services.AddScoped<IUserRepository, UserRepository>();

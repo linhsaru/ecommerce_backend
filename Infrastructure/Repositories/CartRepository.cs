@@ -30,6 +30,11 @@ namespace Infrastructure.Repositories
                 .FirstOrDefaultAsync(c => c.UserId == userId);
         }
 
+        public void RemoveCartItem(CartItem item)
+        {
+            _db.CartItems.Remove(item);
+        }
+
         public async Task SaveChangesAsync()
         {
             await _db.SaveChangesAsync();

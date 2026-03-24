@@ -14,5 +14,8 @@ namespace Application.Interfaces.Services
         Task<Result<CartResponse>> AddToCartAsync(Guid? userId, AddToCartDto dto, CancellationToken cancellationToken = default);
         //userId = null: trả giỏ rỗng (frontend dùng LocalStorage); userId có giá trị: trả giỏ từ DB.
         Task<Result<CartResponse>> GetCartAsync(Guid? userId, CancellationToken cancellationToken = default);
+        
+        Task<Result<CartResponse>> RemoveFromCartAsync(Guid userId, Guid variantId, CancellationToken cancellationToken = default);
+        Task<Result<CartResponse>> UpdateCartItemQuantityAsync(Guid userId, Guid variantId, int delta, CancellationToken cancellationToken = default);
     }
 }

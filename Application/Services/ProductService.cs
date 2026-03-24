@@ -128,6 +128,16 @@ public sealed class ProductService : IProductService
         return Result<ProductDetailDto?>.Ok(MapToDetail(product));
     }
 
+    public async Task<Result<List<ProductVariantDto>>> GetVariantsByProductIdAsync(Guid productId, CancellationToken cancellationToken = default)
+    {
+        if (!await _productRepo.ExistsByIdAsync(productId, cancellationToken))
+            return Result<List<ProductVariantDto>>.Fail("NOT_FOUND", "Product not found.");
+
+        var variants = await _productRepo.GetVariantsByProductIdAsync(productId, cancellationToken);
+        var dtos = variants.Select(MapVariantToDto).ToList();
+        return Result<List<ProductVariantDto>>.Ok(dtos);
+    }
+
     public async Task<Result<ProductDto>> CreateAsync(CreateProductRequest request, CancellationToken cancellationToken = default)
     {
         var exists = await _productRepo.ExistsBySlugAsync(request.Slug, null, cancellationToken);
@@ -269,22 +279,24 @@ public sealed class ProductService : IProductService
                 Alt = pi.Alt,
                 SortOrder = pi.SortOrder
             }).ToList(),
-            Variants = p.ProductVariants.Select(v => new ProductVariantDto
-            {
-                Id = v.Id,
-                Sku = v.Sku,
-                VariantName = v.VariantName,
-                Price = v.Price,
-                CompareAt = v.CompareAt,
-                Status = v.Status,
-                Specifications = v.ProductVariantSpecifications
-                    .Select(s => new SpecificationItemDto
-                    {
-                        Name = s.SpecificationType.Name,
-                        Unit = s.SpecificationType.Unit,
-                        Value = s.Value
-                    }).ToList()
-            }).ToList()
+            Variants = p.ProductVariants.Select(MapVariantToDto).ToList()
         };
     }
+
+    private static ProductVariantDto MapVariantToDto(ProductVariant v) => new()
+    {
+        Id = v.Id,
+        Sku = v.Sku,
+        VariantName = v.VariantName,
+        Price = v.Price,
+        CompareAt = v.CompareAt,
+        Status = v.Status,
+        Specifications = v.ProductVariantSpecifications
+            .Select(s => new SpecificationItemDto
+            {
+                Name = s.SpecificationType.Name,
+                Unit = s.SpecificationType.Unit,
+                Value = s.Value
+            }).ToList()
+    };
 }

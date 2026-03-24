@@ -47,6 +47,35 @@ public class CartController : BaseApiController
         return result.ToActionResult(this);
     }
 
+    [HttpDelete("items/{variantId:guid}")]
+    [ProducesResponseType(typeof(ApiResponse<CartResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> RemoveFromCart([FromRoute] Guid variantId, CancellationToken cancellationToken = default)
+    {
+        var userId = await GetCurrentUserIdAsync(cancellationToken);
+        if (userId == null)
+            return Unauthorized();
+
+        var result = await _cartService.RemoveFromCartAsync(userId.Value, variantId, cancellationToken);
+        return result.ToActionResult(this);
+    }
+
+    [HttpPatch("items/{variantId:guid}/quantity")]
+    [ProducesResponseType(typeof(ApiResponse<CartResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> UpdateItemQuantity([FromRoute] Guid variantId, [FromBody] UpdateCartItemQuantityDto dto, CancellationToken cancellationToken = default)
+    {
+        var userId = await GetCurrentUserIdAsync(cancellationToken);
+        if (userId == null)
+            return Unauthorized();
+
+        var result = await _cartService.UpdateCartItemQuantityAsync(userId.Value, variantId, dto.Delta, cancellationToken);
+        return result.ToActionResult(this);
+    }
+
     private async Task<Guid?> GetCurrentUserIdAsync(CancellationToken cancellationToken)
     {
         if (User.Identity?.IsAuthenticated != true || string.IsNullOrEmpty(User.Identity.Name))
