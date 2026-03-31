@@ -1,7 +1,3 @@
-using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
-using System.Text.Json;
 using Application.Common;
 using Application.DTOs.Payments;
 using Application.Interfaces;
@@ -10,6 +6,12 @@ using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using System.Globalization;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 
 namespace Application.Services;
 
@@ -36,10 +38,10 @@ public sealed class PaymentService : IPaymentService
         if (order.PaymentStatus == PaymentStatus.paid)
             return Result<CreateVnPayPaymentResponse>.Fail("VALIDATION_ERROR", "Order has already been paid.");
 
-        var tmnCode = _configuration["VnPay:TmnCode"];
-        var hashSecret = _configuration["VnPay:HashSecret"];
-        var baseUrl = _configuration["VnPay:BaseUrl"];
-        var returnUrl = _configuration["VnPay:ReturnUrl"];
+        var tmnCode = _configuration["VnPay:TmnCode"]?.Trim();
+        var hashSecret = _configuration["VnPay:HashSecret"]?.Trim();
+        var baseUrl = _configuration["VnPay:BaseUrl"]?.Trim();
+        var returnUrl = _configuration["VnPay:ReturnUrl"]?.Trim();
         var version = _configuration["VnPay:Version"] ?? "2.1.0";
         var command = _configuration["VnPay:Command"] ?? "pay";
         var currCode = _configuration["VnPay:CurrCode"] ?? "VND";
@@ -53,7 +55,12 @@ public sealed class PaymentService : IPaymentService
             return Result<CreateVnPayPaymentResponse>.Fail("CONFIG_ERROR", "VNPAY configuration is missing.");
         }
 
-        var createDate = DateTime.UtcNow;
+        var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById(
+                         RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                              ? "SE Asia Standard Time"
+                              : "Asia/Ho_Chi_Minh");
+
+        var createDate = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
         var expireDate = createDate.AddMinutes(15);
         var txnRef = $"{order.Id:N}-{createDate:HHmmss}";
         var amount = Convert.ToInt64(decimal.Round(order.TotalAmount * 100m, 0, MidpointRounding.AwayFromZero));
@@ -94,10 +101,10 @@ public sealed class PaymentService : IPaymentService
             ["vnp_ExpireDate"] = expireDate.ToString("yyyyMMddHHmmss")
         };
 
-        var hashData = BuildQuery(parameters, encodeValues: false);
+        var hashData = BuildQuery(parameters, encodeValues: true);
         var secureHash = ComputeHmacSha512(hashSecret, hashData);
         var queryString = BuildQuery(parameters, encodeValues: true);
-        var paymentUrl = $"{baseUrl}?{queryString}&vnp_SecureHash={secureHash}";
+        var paymentUrl = $"{baseUrl}?{queryString}&vnp_SecureHashType=HmacSHA512&vnp_SecureHash={secureHash}";
 
         return Result<CreateVnPayPaymentResponse>.Ok(new CreateVnPayPaymentResponse
         {
@@ -115,7 +122,7 @@ public sealed class PaymentService : IPaymentService
         if (!queryParams.TryGetValue("vnp_SecureHash", out var secureHash) || string.IsNullOrWhiteSpace(secureHash))
             return Result<VnPayCallbackResponse>.Fail("VALIDATION_ERROR", "Missing secure hash.");
 
-        var hashSecret = _configuration["VnPay:HashSecret"];
+        var hashSecret = _configuration["VnPay:HashSecret"]?.Trim();
         if (string.IsNullOrWhiteSpace(hashSecret))
             return Result<VnPayCallbackResponse>.Fail("CONFIG_ERROR", "VNPAY hash secret is missing.");
 
@@ -126,7 +133,7 @@ public sealed class PaymentService : IPaymentService
             .OrderBy(kvp => kvp.Key, StringComparer.Ordinal)
             .ToDictionary(k => k.Key, v => v.Value);
 
-        var signData = BuildQuery(new SortedDictionary<string, string>(dataToVerify, StringComparer.Ordinal), encodeValues: false);
+        var signData = BuildQuery(new SortedDictionary<string, string>(dataToVerify, StringComparer.Ordinal), encodeValues: true);
         var expectedHash = ComputeHmacSha512(hashSecret, signData);
         if (!string.Equals(expectedHash, secureHash, StringComparison.OrdinalIgnoreCase))
             return Result<VnPayCallbackResponse>.Fail("VALIDATION_ERROR", "Invalid signature from VNPAY.");
@@ -191,7 +198,7 @@ public sealed class PaymentService : IPaymentService
                 sb.Append('&');
             sb.Append(pair.Key);
             sb.Append('=');
-            sb.Append(encodeValues ? Uri.EscapeDataString(pair.Value) : pair.Value);
+            sb.Append(encodeValues ? WebUtility.UrlEncode(pair.Value) : pair.Value);
         }
         return sb.ToString();
     }

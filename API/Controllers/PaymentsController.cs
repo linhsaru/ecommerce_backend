@@ -4,22 +4,25 @@ using Application.DTOs.Payments;
 using Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 
 namespace API.Controllers;
 
 [ApiController]
 [Route("payments/vnpay")]
+[Route("api/payment/vnpay")]
 public class PaymentsController : BaseApiController
 {
     private readonly IPaymentService _paymentService;
+    private readonly IConfiguration _configuration;
 
-    public PaymentsController(IPaymentService paymentService)
+    public PaymentsController(IPaymentService paymentService, IConfiguration configuration)
     {
         _paymentService = paymentService;
+        _configuration = configuration;
     }
 
     [HttpPost("create-url")]
-    [Authorize]
     [ProducesResponseType(typeof(ApiResponse<CreateVnPayPaymentResponse>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> CreatePaymentUrl(
@@ -39,7 +42,27 @@ public class PaymentsController : BaseApiController
     {
         var query = HttpContext.Request.Query.ToDictionary(k => k.Key, v => v.Value.ToString());
         var result = await _paymentService.HandleVnPayCallbackAsync(query, cancellationToken);
-        return result.ToActionResult(this);
+
+        var frontendReturnUrl = _configuration["VnPay:FrontendReturnUrl"]?.Trim();
+        if (string.IsNullOrWhiteSpace(frontendReturnUrl))
+            return result.ToActionResult(this);
+
+        if (result.IsFailure)
+        {
+            var errorMessage = Uri.EscapeDataString(result.Errors.FirstOrDefault()?.Message ?? "Payment validation failed");
+            var failedRedirectUrl = $"{frontendReturnUrl}?success=false&message={errorMessage}";
+            return Redirect(failedRedirectUrl);
+        }
+
+        var callback = result.Value!;
+        var success = callback.IsSuccess.ToString().ToLowerInvariant();
+        var redirectUrl = $"{frontendReturnUrl}" +
+                          $"?success={success}" +
+                          $"&orderId={callback.OrderId}" +
+                          $"&responseCode={Uri.EscapeDataString(callback.ResponseCode)}" +
+                          $"&transactionRef={Uri.EscapeDataString(callback.TransactionRef)}";
+
+        return Redirect(redirectUrl);
     }
 
     [HttpGet("ipn")]

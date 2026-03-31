@@ -28,6 +28,8 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required.");
 
+        var redisConnection = configuration.GetSection("Redis:ConnectionString").Value;
+
         services.AddDbContext<AppDbContext>(options =>
         {
             options.UseNpgsql(connectionString, npgsql =>
@@ -44,6 +46,16 @@ public static class DependencyInjection
                           .AllowAnyHeader()
                           .AllowAnyMethod();
                 });
+        });
+
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnection;
+        });
+        
+        services.AddHttpClient("OpenAI", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
         });
 
         // Map PostgreSQL enum types (ten phai trung schema: order_status, payment_status, ...)
@@ -90,6 +102,11 @@ public static class DependencyInjection
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<ICouponService, CouponService>();
         services.AddScoped<IPaymentService, PaymentService>();
+        services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IChatService, ChatService>();
+        //Redis cache services
+        services.AddScoped<ICacheService, RedisCacheService>();
 
         //Repositories
         services.AddScoped<IUserRepository, UserRepository>();
@@ -101,6 +118,7 @@ public static class DependencyInjection
         services.AddScoped<ICouponRepository, CouponRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IBrandRepository, BrandRepository>();
+        services.AddScoped<IOrderRepository, OrderRepository>();
 
 
         return services;

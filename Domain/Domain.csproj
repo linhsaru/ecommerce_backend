@@ -25,6 +25,7 @@
     <Compile Include="Interfaces\Repositories\ICategoryRepository.cs" />
     <Compile Include="Interfaces\Repositories\ICouponRepository.cs" />
     <Compile Include="Interfaces\Repositories\IInventoryRepository.cs" />
+    <Compile Include="Interfaces\Repositories\IOrderRepository.cs" />
     <Compile Include="Interfaces\Repositories\IProductRepository.cs" />
     <Compile Include="Interfaces\Repositories\IPromotionRepository.cs" />
     <Compile Include="Interfaces\Repositories\IRoleRepository.cs" />

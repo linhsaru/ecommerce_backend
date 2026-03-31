@@ -17,4 +17,20 @@ public sealed class UserDto
     public DateTime? LastLogin { get; init; }
     public DateTimeOffset CreatedAt { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
+    public List<UserAddressDto> Addresses { get; init; } = new();
+}
+
+public sealed class UserAddressDto
+{
+    public Guid Id { get; init; }
+    public string Recipient { get; init; } = "";
+    public string Phone { get; init; } = "";
+    public string Line1 { get; init; } = "";
+    public string? Line2 { get; init; }
+    public string? Ward { get; init; }
+    public string? District { get; init; }
+    public string? Province { get; init; }
+    public string Country { get; init; } = "VN";
+    public string? PostalCode { get; init; }
+    public bool IsDefault { get; init; }
 }

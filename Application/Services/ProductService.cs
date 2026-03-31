@@ -38,15 +38,23 @@ public sealed class ProductService : IProductService
             var slug = NormalizeCategorySlug(categorySlug);
             var category = await _categoryRepo.GetBySlugAsync(slug, cancellationToken);
             if (category == null)
+            {
+                if (Guid.TryParse(categorySlug, out var categoryIdFromRoute))
+                    category = await _categoryRepo.GetByIdAsync(categoryIdFromRoute, cancellationToken);
+            }
+
+            if (category == null)
                 return Result<(List<ProductDto> Items, long Total)>.Fail("NOT_FOUND", "Category not found.");
 
+            var expandedCategoryIds = await ExpandCategoryIdsAsync(new[] { category.Id }, cancellationToken);
             query = query.Where(p =>
-                p.ProductCategories.Any(pc => pc.Category.Slug == slug));
+                p.ProductCategories.Any(pc => expandedCategoryIds.Contains(pc.CategoryId)));
         }
         else if (categoryId != null && categoryId.Any())
         {
+            var expandedCategoryIds = await ExpandCategoryIdsAsync(categoryId, cancellationToken);
             query = query.Where(p =>
-                p.ProductCategories.Any(pc => categoryId.Contains(pc.CategoryId)));
+                p.ProductCategories.Any(pc => expandedCategoryIds.Contains(pc.CategoryId)));
         }
 
         var total = await query.LongCountAsync(cancellationToken);
@@ -107,6 +115,46 @@ public sealed class ProductService : IProductService
 
     private static string NormalizeCategorySlug(string slug)
         => slug.Trim().ToLowerInvariant();
+
+    private async Task<HashSet<Guid>> ExpandCategoryIdsAsync(
+        IEnumerable<Guid> rootCategoryIds,
+        CancellationToken cancellationToken)
+    {
+        var roots = rootCategoryIds
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToHashSet();
+
+        if (!roots.Any())
+            return roots;
+
+        var categories = await _categoryRepo.GetQueryable()
+            .Select(c => new { c.Id, c.ParentId })
+            .ToListAsync(cancellationToken);
+
+        var childrenByParent = categories
+            .Where(c => c.ParentId.HasValue)
+            .GroupBy(c => c.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+
+        var allCategoryIds = new HashSet<Guid>(roots);
+        var queue = new Queue<Guid>(roots);
+
+        while (queue.Count > 0)
+        {
+            var parentId = queue.Dequeue();
+            if (!childrenByParent.TryGetValue(parentId, out var childIds))
+                continue;
+
+            foreach (var childId in childIds)
+            {
+                if (allCategoryIds.Add(childId))
+                    queue.Enqueue(childId);
+            }
+        }
+
+        return allCategoryIds;
+    }
 
     public async Task<Result<ProductDetailDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
     {

@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace API.Controllers;
 
 /// <summary>
-/// REST API cho danh muc: GET phan trang, GET theo id/slug, POST tao, PUT cap nhat, DELETE xoa mem.
+/// REST API cho danh muc: GET danh sach, GET theo id/slug, POST tao, PUT cap nhat, DELETE xoa mem.
 /// </summary>
 [ApiController]
 [Route("categories")]
@@ -25,27 +25,23 @@ public class CategoriesController : BaseApiController
     }
 
     /// <summary>
-    /// GET categories?page=1&pageSize=10&search=...&parentId=...
+    /// GET categories?search=...&parentId=...
     /// </summary>
     [HttpGet]
-    [ProducesResponseType(typeof(ApiResponse<PagedResponse<CategoryDto>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<List<CategoryDto>>), StatusCodes.Status200OK)]
     [AllowAnonymous]
-    public async Task<IActionResult> GetPaged(
-        [FromQuery] int page = 1,
-        [FromQuery] int pageSize = 10,
+    public async Task<IActionResult> GetList(
         [FromQuery] string? search = null,
         [FromQuery] Guid? parentId = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _categoryService.GetPagedAsync(page, pageSize, search, parentId, cancellationToken);
+        var result = await _categoryService.GetListAsync(search, parentId, cancellationToken);
         if (result.IsFailure)
         {
             var errors = result.Errors.Select(e => new ApiError(e.Code, e.Message, Detail: e.Details)).ToList();
             return StatusCode(400, ApiResponse<object>.Fail("Request failed", errors, HttpContext.TraceIdentifier));
         }
-        var (items, total) = result.Value!;
-        var response = PagedResponse<CategoryDto>.Create(items, page, pageSize, total);
-        return Ok(ApiResponse<PagedResponse<CategoryDto>>.Ok(response, traceId: HttpContext.TraceIdentifier));
+        return Ok(ApiResponse<List<CategoryDto>>.Ok(result.Value!, traceId: HttpContext.TraceIdentifier));
     }
 
     /// <summary>

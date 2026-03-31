@@ -17,6 +17,7 @@ namespace Infrastructure.Repositories
         public async Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
             => await _context.Users
                 .Include(u => u.Role)
+                .Include(u => u.Addresses)
                 .FirstOrDefaultAsync(u => u.Id == id && u.DeletedAt == null, cancellationToken);
 
         public async Task<User?> GetUserAsync(string userInfo, CancellationToken cancellationToken)

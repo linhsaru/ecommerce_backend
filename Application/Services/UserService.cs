@@ -102,7 +102,72 @@ public sealed class UserService : IUserService
         if (!string.IsNullOrEmpty(request.Password))
             user.PasswordHash = _passwordHasher.Hash(request.Password);
 
-        _userRepo.Update(user);
+        if (request.Addresses != null)
+        {
+            var hasManyDefault = request.Addresses.Count(a => a.IsDefault) > 1;
+            if (hasManyDefault)
+                return Result<UserDto>.Fail("VALIDATION_ERROR", "Chỉ được có 1 địa chỉ mặc định.");
+
+            var now = DateTimeOffset.UtcNow;
+            var existingActiveAddresses = user.Addresses
+                .Where(a => !a.IsDeleted)
+                .OrderBy(a => a.CreatedAt)
+                .ToList();
+
+            var maxCount = Math.Max(existingActiveAddresses.Count, request.Addresses.Count);
+            for (var i = 0; i < maxCount; i++)
+            {
+                var hasExisting = i < existingActiveAddresses.Count;
+                var hasIncoming = i < request.Addresses.Count;
+
+                if (hasExisting && hasIncoming)
+                {
+                    // Update existing address if user already has one at this position.
+                    var existing = existingActiveAddresses[i];
+                    var incoming = request.Addresses[i];
+                    existing.Recipient = incoming.Recipient;
+                    existing.Phone = incoming.Phone;
+                    existing.Line1 = incoming.Line1;
+                    existing.Line2 = incoming.Line2;
+                    existing.Ward = incoming.Ward;
+                    existing.District = incoming.District;
+                    existing.Province = incoming.Province;
+                    existing.Country = string.IsNullOrWhiteSpace(incoming.Country) ? "VN" : incoming.Country;
+                    existing.PostalCode = incoming.PostalCode;
+                    existing.IsDefault = incoming.IsDefault;
+                    existing.UpdatedAt = now;
+                    continue;
+                }
+
+                if (!hasExisting && hasIncoming)
+                {
+                    var incoming = request.Addresses[i];
+                    user.Addresses.Add(new UserAddress
+                    {
+                        UserId = user.Id,
+                        Recipient = incoming.Recipient,
+                        Phone = incoming.Phone,
+                        Line1 = incoming.Line1,
+                        Line2 = incoming.Line2,
+                        Ward = incoming.Ward,
+                        District = incoming.District,
+                        Province = incoming.Province,
+                        Country = string.IsNullOrWhiteSpace(incoming.Country) ? "VN" : incoming.Country,
+                        PostalCode = incoming.PostalCode,
+                        IsDefault = incoming.IsDefault,
+                        CreatedAt = now,
+                        UpdatedAt = now
+                    });
+                    continue;
+                }
+
+                if (hasExisting && !hasIncoming)
+                {
+                    existingActiveAddresses[i].MarkDeleted();
+                }
+            }
+        }
+
         await _userRepo.SaveChangesAsync(cancellationToken);
 
         var updated = await _userRepo.GetByIdAsync(id, cancellationToken);
@@ -116,7 +181,6 @@ public sealed class UserService : IUserService
             return Result.Fail("NOT_FOUND", "User not found.");
 
         user.MarkDeleted(null);
-        _userRepo.Update(user);
         await _userRepo.SaveChangesAsync(cancellationToken);
         return Result.Ok();
     }
@@ -139,7 +203,6 @@ public sealed class UserService : IUserService
 
         user.RoleId = roleId;
 
-        _userRepo.Update(user);
         await _userRepo.SaveChangesAsync(cancellationToken);
 
         var updated = await _userRepo.GetByIdAsync(id, cancellationToken);
@@ -154,7 +217,6 @@ public sealed class UserService : IUserService
 
         user.RoleId = null;
 
-        _userRepo.Update(user);
         await _userRepo.SaveChangesAsync(cancellationToken);
 
         var updated = await _userRepo.GetByIdAsync(id, cancellationToken);
@@ -174,6 +236,25 @@ public sealed class UserService : IUserService
         Status = u.Status,
         LastLogin = u.LastLogin,
         CreatedAt = u.CreatedAt,
-        UpdatedAt = u.UpdatedAt
+        UpdatedAt = u.UpdatedAt,
+        Addresses = u.Addresses
+            .Where(a => !a.IsDeleted)
+            .OrderByDescending(a => a.IsDefault)
+            .ThenByDescending(a => a.CreatedAt)
+            .Select(a => new UserAddressDto
+            {
+                Id = a.Id,
+                Recipient = a.Recipient,
+                Phone = a.Phone,
+                Line1 = a.Line1,
+                Line2 = a.Line2,
+                Ward = a.Ward,
+                District = a.District,
+                Province = a.Province,
+                Country = a.Country,
+                PostalCode = a.PostalCode,
+                IsDefault = a.IsDefault
+            })
+            .ToList()
     };
 }

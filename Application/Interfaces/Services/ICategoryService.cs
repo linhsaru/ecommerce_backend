@@ -9,7 +9,7 @@ namespace Application.Interfaces.Services;
 /// </summary>
 public interface ICategoryService
 {
-    Task<Result<(List<CategoryDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, Guid? parentId, CancellationToken cancellationToken = default);
+    Task<Result<List<CategoryDto>>> GetListAsync(string? search, Guid? parentId, CancellationToken cancellationToken = default);
     Task<Result<CategoryDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default);
     Task<Result<CategoryDto?>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result<CategoryDto>> CreateAsync(CreateCategoryRequest request, CancellationToken cancellationToken = default);
