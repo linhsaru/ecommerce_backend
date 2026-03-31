@@ -36,4 +36,14 @@ public sealed class ProductVariantDto
     public decimal Price { get; init; }
     public decimal? CompareAt { get; init; }
     public int Status { get; init; }
+    //Thông số kỹ thuật của biến thể sản phẩm.
+    public List<SpecificationItemDto> Specifications { get; init; } = new();
+}
+
+//Thông số kỹ thuật: tên loại thông số, đơn vị, giá trị.
+public sealed class SpecificationItemDto
+{
+    public string Name { get; init; } = "";
+    public string? Unit { get; init; }
+    public string? Value { get; init; }
 }

@@ -11,15 +11,18 @@ namespace Application.Services
 {
     public sealed class AuthService : IAuthService
     {
+        private readonly IRoleRepository _roleRepository;
         private readonly IUserRepository _userRepository;
         private readonly IPasswordHasher _passwordHasher;
         private readonly IJwtTokenGenerator _jwtTokenGenerator;
 
         public AuthService(
+            IRoleRepository roleRepository,
             IUserRepository userRepository,
             IPasswordHasher passwordHasher,
             IJwtTokenGenerator jwtTokenGenerator)
         {
+            _roleRepository = roleRepository;
             _userRepository = userRepository;
             _passwordHasher = passwordHasher;
             _jwtTokenGenerator = jwtTokenGenerator;
@@ -47,15 +50,19 @@ namespace Application.Services
             {
                 return Result<LoginResponse>.Fail("AUTH_001", "Email hoặc mật khẩu không chính xác.");
             }
+                
+            var role = await _roleRepository.GetRoleAsync(user.RoleId ?? Guid.Empty, cancellationToken);
 
             // 4. Tạo access token, refresh token và trả về LoginResponse
-            var accessToken = _jwtTokenGenerator.GenerateToken(user.Username);
-            var refreshToken = _jwtTokenGenerator.GenerateRefreshToken(user.Username);
+            var accessToken = _jwtTokenGenerator.GenerateToken(user.Id, user.Username, role.RoleName);
+            var refreshToken = _jwtTokenGenerator.GenerateRefreshToken(user.Id, user.Username);
+
             var loginResponse = new LoginResponse
             {
                 AccessToken = accessToken,
                 RefreshToken = refreshToken,
-                Username = user.Username
+                Username = user.Username,
+                Role = role.RoleName
             };
             return Result<LoginResponse>.Ok(loginResponse);
         }

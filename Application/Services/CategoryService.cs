@@ -1,4 +1,4 @@
-﻿using System.Linq;
+using System.Linq;
 using System.Threading.Tasks;
 using Application.Common;
 using Application.DTOs.Categories;
@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Application.Services;
 
 /// <summary>
-/// Service CRUD danh muc: phan trang, tim theo slug/id, tao/cap nhat/xoa (soft delete).
+/// Service CRUD danh muc: lay danh sach, tim theo slug/id, tao/cap nhat/xoa (soft delete).
 /// </summary>
 public sealed class CategoryService : ICategoryService
 {
@@ -22,21 +22,20 @@ public sealed class CategoryService : ICategoryService
         _repository = repository;
     }
 
-    public async Task<Result<(List<CategoryDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, long? parentId, CancellationToken cancellationToken = default)
+    public async Task<Result<List<CategoryDto>>> GetListAsync(string? search, Guid? parentId, CancellationToken cancellationToken = default)
     {
         var query = _repository.GetQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
             query = query.Where(c => c.Name.Contains(search) || c.Slug.Contains(search));
+        
         if (parentId.HasValue)
-            query = query.Where(c => c.ParentId.Equals(parentId.Value));
+        {
+            query = query.Where(c => c.Id == parentId.Value || c.ParentId == parentId.Value);
+        }
 
-        var total = await query.LongCountAsync(cancellationToken);
-        var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);
         var items = await query
             .OrderBy(c => c.SortOrder).ThenBy(c => c.Id)
-            .Skip((int)skip)
-            .Take(Math.Clamp(pageSize, 1, 100))
             .Select(c => new CategoryDto
             {
                 Id = c.Id,
@@ -49,7 +48,7 @@ public sealed class CategoryService : ICategoryService
             })
             .ToListAsync(cancellationToken);
 
-        return Result<(List<CategoryDto> Items, long Total)>.Ok((items, total));
+        return Result<List<CategoryDto>>.Ok(items);
     }
 
     public async Task<Result<CategoryDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)

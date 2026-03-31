@@ -16,13 +16,15 @@ namespace Application.Services;
 public sealed class ProductService : IProductService
 {
     private readonly IProductRepository _productRepo;
+    private readonly ICategoryRepository _categoryRepo;
 
-    public ProductService(IProductRepository productRepo)
+    public ProductService(IProductRepository productRepo, ICategoryRepository categoryRepo)
     {
         _productRepo = productRepo;
+        _categoryRepo = categoryRepo;
     }
 
-    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, CancellationToken cancellationToken = default)
+    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid>? categoryId, string? categorySlug, CancellationToken cancellationToken = default)
     {
         var query = _productRepo.GetQueryable();
 
@@ -30,6 +32,30 @@ public sealed class ProductService : IProductService
             query = query.Where(p => p.Name.Contains(search) || (p.Slug != null && p.Slug.Contains(search)));
         if (status.HasValue)
             query = query.Where(p => p.Status == status.Value);
+
+        if (!string.IsNullOrWhiteSpace(categorySlug))
+        {
+            var slug = NormalizeCategorySlug(categorySlug);
+            var category = await _categoryRepo.GetBySlugAsync(slug, cancellationToken);
+            if (category == null)
+            {
+                if (Guid.TryParse(categorySlug, out var categoryIdFromRoute))
+                    category = await _categoryRepo.GetByIdAsync(categoryIdFromRoute, cancellationToken);
+            }
+
+            if (category == null)
+                return Result<(List<ProductDto> Items, long Total)>.Fail("NOT_FOUND", "Category not found.");
+
+            var expandedCategoryIds = await ExpandCategoryIdsAsync(new[] { category.Id }, cancellationToken);
+            query = query.Where(p =>
+                p.ProductCategories.Any(pc => expandedCategoryIds.Contains(pc.CategoryId)));
+        }
+        else if (categoryId != null && categoryId.Any())
+        {
+            var expandedCategoryIds = await ExpandCategoryIdsAsync(categoryId, cancellationToken);
+            query = query.Where(p =>
+                p.ProductCategories.Any(pc => expandedCategoryIds.Contains(pc.CategoryId)));
+        }
 
         var total = await query.LongCountAsync(cancellationToken);
         var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);
@@ -41,17 +67,93 @@ public sealed class ProductService : IProductService
             {
                 Id = p.Id,
                 BrandId = p.BrandId,
+                BrandName = p.Brand != null ? p.Brand.Name : null,
                 Name = p.Name,
                 Slug = p.Slug,
                 Description = p.Description,
                 Status = p.Status,
                 ThumbnailUrl = p.ThumbnailUrl,
+                // Gia goc (uu tien CompareAt, neu null thi dung Price)
+                OriginalPrice = p.ProductVariants
+                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                    .OrderBy(v => v.Price)
+                    .Select(v => (decimal?)Math.Round((v.CompareAt ?? v.Price),2))
+                    .FirstOrDefault(),
+                // Gia sau giam (chinh la gia hien tai)
+                DiscountedPrice = p.ProductVariants
+                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                    .OrderBy(v => v.Price)
+                    .Select(v => (decimal?)Math.Round(v.Price, 2) ?? (decimal?)0)
+                    .FirstOrDefault(),
+                // Phan tram giam gia (%)
+                DiscountPercent = p.ProductVariants
+                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                    .OrderBy(v => v.Price)
+                    .Select(v =>
+                        v.CompareAt != null && v.CompareAt > 0 && v.Price < v.CompareAt
+                            ? (decimal?)Math.Round(((v.CompareAt.Value - v.Price) / v.CompareAt.Value * 100), 2)
+                            : (decimal?)null
+                    )
+                    .FirstOrDefault(),
+                // Danh sach anh san pham
+                imageProduct = p.ProductImages
+                    .OrderBy(img => img.SortOrder)
+                    .Select(img => new ProductImageDto
+                    {
+                        Id = img.Id,
+                        Url = img.Url,
+                        Alt = img.Alt,
+                        SortOrder = img.SortOrder
+                    }),
                 CreatedAt = p.CreatedAt,
                 UpdatedAt = p.UpdatedAt
             })
             .ToListAsync(cancellationToken);
 
         return Result<(List<ProductDto> Items, long Total)>.Ok((items, total));
+    }
+
+    private static string NormalizeCategorySlug(string slug)
+        => slug.Trim().ToLowerInvariant();
+
+    private async Task<HashSet<Guid>> ExpandCategoryIdsAsync(
+        IEnumerable<Guid> rootCategoryIds,
+        CancellationToken cancellationToken)
+    {
+        var roots = rootCategoryIds
+            .Where(x => x != Guid.Empty)
+            .Distinct()
+            .ToHashSet();
+
+        if (!roots.Any())
+            return roots;
+
+        var categories = await _categoryRepo.GetQueryable()
+            .Select(c => new { c.Id, c.ParentId })
+            .ToListAsync(cancellationToken);
+
+        var childrenByParent = categories
+            .Where(c => c.ParentId.HasValue)
+            .GroupBy(c => c.ParentId!.Value)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.Id).ToList());
+
+        var allCategoryIds = new HashSet<Guid>(roots);
+        var queue = new Queue<Guid>(roots);
+
+        while (queue.Count > 0)
+        {
+            var parentId = queue.Dequeue();
+            if (!childrenByParent.TryGetValue(parentId, out var childIds))
+                continue;
+
+            foreach (var childId in childIds)
+            {
+                if (allCategoryIds.Add(childId))
+                    queue.Enqueue(childId);
+            }
+        }
+
+        return allCategoryIds;
     }
 
     public async Task<Result<ProductDetailDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
@@ -72,6 +174,16 @@ public sealed class ProductService : IProductService
             return Result<ProductDetailDto?>.Fail("NOT_FOUND", "Product not found.");
 
         return Result<ProductDetailDto?>.Ok(MapToDetail(product));
+    }
+
+    public async Task<Result<List<ProductVariantDto>>> GetVariantsByProductIdAsync(Guid productId, CancellationToken cancellationToken = default)
+    {
+        if (!await _productRepo.ExistsByIdAsync(productId, cancellationToken))
+            return Result<List<ProductVariantDto>>.Fail("NOT_FOUND", "Product not found.");
+
+        var variants = await _productRepo.GetVariantsByProductIdAsync(productId, cancellationToken);
+        var dtos = variants.Select(MapVariantToDto).ToList();
+        return Result<List<ProductVariantDto>>.Ok(dtos);
     }
 
     public async Task<Result<ProductDto>> CreateAsync(CreateProductRequest request, CancellationToken cancellationToken = default)
@@ -104,6 +216,7 @@ public sealed class ProductService : IProductService
         {
             Id = product.Id,
             BrandId = product.BrandId,
+            BrandName = product.Brand?.Name,
             Name = product.Name,
             Slug = product.Slug,
             Description = product.Description,
@@ -172,6 +285,20 @@ public sealed class ProductService : IProductService
 
     private static ProductDetailDto MapToDetail(Product p)
     {
+        var activeVariants = p.ProductVariants
+            .Where(v => v.DeletedAt == null && v.Status == 1)
+            .OrderBy(v => v.Price)
+            .ToList();
+
+        decimal? discountedPrice = activeVariants.FirstOrDefault()?.Price;
+        decimal? originalPrice = activeVariants.FirstOrDefault()?.CompareAt ?? discountedPrice;
+        decimal? discountPercent = null;
+
+        if (originalPrice.HasValue && originalPrice.Value > 0 && discountedPrice.HasValue && discountedPrice.Value < originalPrice.Value)
+        {
+            discountPercent = (originalPrice.Value - discountedPrice.Value) / originalPrice.Value * 100;
+        }
+
         return new ProductDetailDto
         {
             Id = p.Id,
@@ -181,6 +308,9 @@ public sealed class ProductService : IProductService
             Description = p.Description,
             Status = p.Status,
             ThumbnailUrl = p.ThumbnailUrl,
+            OriginalPrice = originalPrice,
+            DiscountedPrice = discountedPrice,
+            DiscountPercent = discountPercent,
             CreatedAt = p.CreatedAt,
             UpdatedAt = p.UpdatedAt,
             BrandName = p.Brand?.Name,
@@ -197,15 +327,24 @@ public sealed class ProductService : IProductService
                 Alt = pi.Alt,
                 SortOrder = pi.SortOrder
             }).ToList(),
-            Variants = p.ProductVariants.Select(v => new ProductVariantDto
-            {
-                Id = v.Id,
-                Sku = v.Sku,
-                VariantName = v.VariantName,
-                Price = v.Price,
-                CompareAt = v.CompareAt,
-                Status = v.Status
-            }).ToList()
+            Variants = p.ProductVariants.Select(MapVariantToDto).ToList()
         };
     }
+
+    private static ProductVariantDto MapVariantToDto(ProductVariant v) => new()
+    {
+        Id = v.Id,
+        Sku = v.Sku,
+        VariantName = v.VariantName,
+        Price = v.Price,
+        CompareAt = v.CompareAt,
+        Status = v.Status,
+        Specifications = v.ProductVariantSpecifications
+            .Select(s => new SpecificationItemDto
+            {
+                Name = s.SpecificationType.Name,
+                Unit = s.SpecificationType.Unit,
+                Value = s.Value
+            }).ToList()
+    };
 }

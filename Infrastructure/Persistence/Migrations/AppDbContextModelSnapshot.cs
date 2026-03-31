@@ -112,8 +112,8 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("cart_id");
 
-                    b.Property<long>("VariantId")
-                        .HasColumnType("bigint")
+                    b.Property<Guid>("VariantId")
+                        .HasColumnType("uuid")
                         .HasColumnName("variant_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
@@ -128,15 +128,11 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
 
-                    b.Property<Guid>("VariantId1")
-                        .HasColumnType("uuid")
-                        .HasColumnName("variant_id1");
-
                     b.HasKey("CartId", "VariantId")
                         .HasName("pk_cart_items");
 
-                    b.HasIndex("VariantId1")
-                        .HasDatabaseName("ix_cart_items_variant_id1");
+                    b.HasIndex("VariantId")
+                        .HasDatabaseName("ix_cart_items_variant_id");
 
                     b.ToTable("cart_items", (string)null);
                 });
@@ -830,6 +826,37 @@ namespace Infrastructure.Persistence.Migrations
                     b.ToTable("product_variants", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.ProductVariantSpecification", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ProductVariantId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("product_variant_id");
+
+                    b.Property<Guid>("SpecificationTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("specification_type_id");
+
+                    b.Property<string>("Value")
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_product_variant_specification");
+
+                    b.HasIndex("ProductVariantId")
+                        .HasDatabaseName("ix_product_variant_specification_product_variant_id");
+
+                    b.HasIndex("SpecificationTypeId")
+                        .HasDatabaseName("ix_product_variant_specification_specification_type_id");
+
+                    b.ToTable("product_variant_specification", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.Promotion", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1009,6 +1036,28 @@ namespace Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_shipments_order_id");
 
                     b.ToTable("shipments", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.SpecificationType", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Unit")
+                        .HasColumnType("text")
+                        .HasColumnName("unit");
+
+                    b.HasKey("Id")
+                        .HasName("pk_specification_type");
+
+                    b.ToTable("specification_type", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.User", b =>
@@ -1233,10 +1282,10 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.HasOne("Domain.Entities.ProductVariant", "Variant")
                         .WithMany()
-                        .HasForeignKey("VariantId1")
+                        .HasForeignKey("VariantId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("fk_cart_items_product_variants_variant_id1");
+                        .HasConstraintName("fk_cart_items_product_variants_variant_id");
 
                     b.Navigation("Cart");
 
@@ -1415,6 +1464,27 @@ namespace Infrastructure.Persistence.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Domain.Entities.ProductVariantSpecification", b =>
+                {
+                    b.HasOne("Domain.Entities.ProductVariant", "ProductVariant")
+                        .WithMany("ProductVariantSpecifications")
+                        .HasForeignKey("ProductVariantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_variant_specification_product_variants_product_vari");
+
+                    b.HasOne("Domain.Entities.SpecificationType", "SpecificationType")
+                        .WithMany()
+                        .HasForeignKey("SpecificationTypeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_product_variant_specification_specification_type_specificat");
+
+                    b.Navigation("ProductVariant");
+
+                    b.Navigation("SpecificationType");
+                });
+
             modelBuilder.Entity("Domain.Entities.PromotionProduct", b =>
                 {
                     b.HasOne("Domain.Entities.Product", "Product")
@@ -1503,6 +1573,11 @@ namespace Infrastructure.Persistence.Migrations
                     b.Navigation("ProductImages");
 
                     b.Navigation("ProductVariants");
+                });
+
+            modelBuilder.Entity("Domain.Entities.ProductVariant", b =>
+                {
+                    b.Navigation("ProductVariantSpecifications");
                 });
 
             modelBuilder.Entity("Domain.Entities.Promotion", b =>

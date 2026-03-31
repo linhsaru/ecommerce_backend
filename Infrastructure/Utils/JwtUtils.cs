@@ -20,7 +20,7 @@ namespace Infrastructure.Utils
             _configuration = configuration;
         }
 
-        public string GenerateToken(string username)
+        public string GenerateToken(Guid userId, string username, string role)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
             var secretKey = _configuration["Jwt:Key"];
@@ -33,8 +33,9 @@ namespace Infrastructure.Utils
             {
                 Subject = new ClaimsIdentity(new[]
                 {
+                    new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
                     new Claim(ClaimTypes.Name, username),
-                    new Claim(ClaimTypes.Role, "Admin")
+                    new Claim(ClaimTypes.Role, role)
                 }),
                 Expires = DateTime.UtcNow.AddHours(1),
                 Issuer = issuer,
@@ -48,7 +49,7 @@ namespace Infrastructure.Utils
             return tokenHandler.WriteToken(token);
         }
 
-        public string GenerateRefreshToken(string username)
+        public string GenerateRefreshToken(Guid userId, string username)
         {
             var tokenHandler = new JwtSecurityTokenHandler();
             var secretKey = _configuration["Jwt:Key"];
@@ -60,6 +61,7 @@ namespace Infrastructure.Utils
             {
                 Subject = new ClaimsIdentity(new[]
                 {
+                    new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
                     new Claim(ClaimTypes.Name, username),
                     new Claim("refresh", "true")
                 }),

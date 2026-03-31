@@ -1,10 +1,11 @@
-﻿using Application.Interfaces;
+using Application.Interfaces;
 using Domain.Common;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Helpers;
 using Infrastructure.Utils;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 
@@ -70,23 +71,52 @@ public class AppDbContext : DbContext, IAppDbContext
         // Global filter: bo qua ban ghi da soft delete (DeletedAt == null)
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
-            if (typeof(SoftDeleteEntity<long>).IsAssignableFrom(entityType.ClrType))
+            if (typeof(SoftDeleteEntity<Guid>).IsAssignableFrom(entityType.ClrType))
             {
                 var parameter = Expression.Parameter(entityType.ClrType, "e");
-                var property = Expression.Property(parameter, nameof(SoftDeleteEntity<long>.DeletedAt));
+                var property = Expression.Property(parameter, nameof(SoftDeleteEntity<Guid>.DeletedAt));
                 var condition = Expression.Equal(property, Expression.Constant(null, typeof(DateTimeOffset?)));
                 var lambda = Expression.Lambda(condition, parameter);
                 modelBuilder.Entity(entityType.ClrType).HasQueryFilter(lambda);
+            }
+        }
+        foreach (var entityType in modelBuilder.Model.GetEntityTypes())
+        {
+            foreach (var property in entityType.GetProperties())
+            {
+                if (property.ClrType != typeof(DateTimeOffset))
+                    continue;
+
+                var entityBuilder = modelBuilder.Entity(entityType.ClrType);
+                if (property.IsNullable)
+                {
+                    entityBuilder.Property(property.Name).HasConversion(
+                        new ValueConverter<DateTimeOffset?, DateTime?>(
+                            v => v.HasValue ? v.Value.UtcDateTime : null,
+                            v => v.HasValue
+                                ? new DateTimeOffset(DateTime.SpecifyKind(v.Value, DateTimeKind.Utc))
+                                : null));
+                }
+                else
+                {
+                    entityBuilder.Property(property.Name).HasConversion(
+                        new ValueConverter<DateTimeOffset, DateTime>(
+                            v => v.UtcDateTime,
+                            v => new DateTimeOffset(DateTime.SpecifyKind(v, DateTimeKind.Utc))));
+                }
             }
         }
     }
 
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
-        foreach (var entry in ChangeTracker.Entries<AuditableEntity<long>>())
+        foreach (var entry in ChangeTracker.Entries())
         {
-            if (entry.State == EntityState.Modified)
-                entry.Entity.UpdatedAt = DateTimeOffset.UtcNow;
+            if(entry.Entity is AuditableEntity<Guid> auditable)
+            {
+                if (entry.State == EntityState.Modified)
+                    auditable.UpdatedAt = DateTimeOffset.UtcNow;
+            }
         }
         return base.SaveChangesAsync(cancellationToken);
     }

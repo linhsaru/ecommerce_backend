@@ -28,11 +28,34 @@ public static class DependencyInjection
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is required.");
 
+        var redisConnection = configuration.GetSection("Redis:ConnectionString").Value;
+
         services.AddDbContext<AppDbContext>(options =>
         {
             options.UseNpgsql(connectionString, npgsql =>
                 npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName))
                    .UseSnakeCaseNamingConvention();
+        });
+
+        services.AddCors(options =>
+        {
+            options.AddPolicy("AllowFEApp",
+                policy =>
+                {
+                    policy.WithOrigins("http://localhost:5173", "http://localhost:3000")
+                          .AllowAnyHeader()
+                          .AllowAnyMethod();
+                });
+        });
+
+        services.AddStackExchangeRedisCache(options =>
+        {
+            options.Configuration = redisConnection;
+        });
+        
+        services.AddHttpClient("OpenAI", client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(60);
         });
 
         // Map PostgreSQL enum types (ten phai trung schema: order_status, payment_status, ...)
@@ -70,14 +93,32 @@ public static class DependencyInjection
         //Services
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IUserService, UserService>();
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<ICategoryService, CategoryService>();
-
+        services.AddScoped<ICartService, CartService>();
+        services.AddScoped<IBrandService, BrandService>();
+        services.AddScoped<IPromotionService, PromotionService>();
+        services.AddScoped<IInventoryService, InventoryService>();
+        services.AddScoped<ICouponService, CouponService>();
+        services.AddScoped<IPaymentService, PaymentService>();
+        services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IDashboardService, DashboardService>();
+        services.AddScoped<IChatService, ChatService>();
+        //Redis cache services
+        services.AddScoped<ICacheService, RedisCacheService>();
 
         //Repositories
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IProductRepository, ProductRepository>();
         services.AddScoped<ICategoryRepository, CategoryRepository>();
+        services.AddScoped<ICartRepository, CartRepository>();
+        services.AddScoped<IInventoryRepository, InventoryRepository>();
+        services.AddScoped<IPromotionRepository, PromotionRepository>();
+        services.AddScoped<ICouponRepository, CouponRepository>();
+        services.AddScoped<IRoleRepository, RoleRepository>();
+        services.AddScoped<IBrandRepository, BrandRepository>();
+        services.AddScoped<IOrderRepository, OrderRepository>();
 
 
         return services;

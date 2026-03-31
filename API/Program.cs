@@ -22,8 +22,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
-
-app.UseHttpsRedirection();
+app.UseCors("AllowFEApp");
+//app.UseHttpsRedirection();
 app.UseAuthentication();
 
 app.UseAuthorization();
