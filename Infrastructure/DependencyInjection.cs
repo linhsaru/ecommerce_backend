@@ -53,7 +53,7 @@ public static class DependencyInjection
             options.Configuration = redisConnection;
         });
         
-        services.AddHttpClient("OpenAI", client =>
+        services.AddHttpClient("Gemini", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(60);
         });

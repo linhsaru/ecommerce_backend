@@ -9,4 +9,7 @@ public sealed class CreateVnPayPaymentRequest
 
     [MaxLength(250)]
     public string? OrderDescription { get; set; }
+
+    [MaxLength(500)]
+    public string? ReturnUrl { get; set; }
 }

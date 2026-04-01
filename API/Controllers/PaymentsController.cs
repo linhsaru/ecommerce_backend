@@ -59,10 +59,22 @@ public class PaymentsController : BaseApiController
         var redirectUrl = $"{frontendReturnUrl}" +
                           $"?success={success}" +
                           $"&orderId={callback.OrderId}" +
+                          $"&orderNo={Uri.EscapeDataString(callback.OrderNo ?? string.Empty)}" +
                           $"&responseCode={Uri.EscapeDataString(callback.ResponseCode)}" +
                           $"&transactionRef={Uri.EscapeDataString(callback.TransactionRef)}";
 
         return Redirect(redirectUrl);
+    }
+
+    [HttpGet("verify")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ApiResponse<VnPayCallbackResponse>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> Verify(CancellationToken cancellationToken = default)
+    {
+        var query = HttpContext.Request.Query.ToDictionary(k => k.Key, v => v.Value.ToString());
+        var result = await _paymentService.HandleVnPayCallbackAsync(query, cancellationToken);
+        return result.ToActionResult(this);
     }
 
     [HttpGet("ipn")]

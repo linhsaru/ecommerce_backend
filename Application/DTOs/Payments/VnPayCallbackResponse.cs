@@ -5,6 +5,7 @@ namespace Application.DTOs.Payments;
 public sealed class VnPayCallbackResponse
 {
     public Guid OrderId { get; set; }
+    public string OrderNo { get; set; } = string.Empty;
     public string TransactionRef { get; set; } = string.Empty;
     public string ResponseCode { get; set; } = string.Empty;
     public decimal Amount { get; set; }
