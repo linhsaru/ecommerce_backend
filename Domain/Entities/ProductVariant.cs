@@ -1,4 +1,4 @@
-﻿namespace Domain.Entities;
+namespace Domain.Entities;
 using Domain.Common;
 /// <summary>
 /// Bien the san pham (size/color): sku, variant_name, attributes (jsonb), price, compare_at, cost, weight_gram, status.
@@ -19,4 +19,5 @@ public class ProductVariant : SoftDeleteEntity<Guid>
     public Product Product { get; set; } = null!;
 
     public ICollection<ProductVariantSpecification> ProductVariantSpecifications { get; set; } = new List<ProductVariantSpecification>();
+    public ICollection<Component> Components { get; set; } = new List<Component>();
 }

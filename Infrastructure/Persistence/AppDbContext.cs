@@ -43,6 +43,7 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
 
     public DbSet<Role> Roles => Set<Role>();
+    public DbSet<Component> Components => Set<Component>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -67,6 +68,12 @@ public class AppDbContext : DbContext, IAppDbContext
                 Description = "Người dùng thông thường"
             }
         );
+
+        modelBuilder.Entity<Component>()
+            .HasOne(x => x.ProductVariant)
+            .WithMany(v => v.Components)
+            .HasForeignKey(x => x.ProductVariantId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // Global filter: bo qua ban ghi da soft delete (DeletedAt == null)
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())

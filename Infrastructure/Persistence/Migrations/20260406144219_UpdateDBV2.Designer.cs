@@ -5,6 +5,7 @@ using Domain.Enums;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -13,9 +14,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260406144219_UpdateDBV2")]
+    partial class UpdateDBV2
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -326,10 +329,6 @@ namespace Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric")
                         .HasColumnName("price");
 
-                    b.Property<Guid?>("ProductVariantId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("product_variant_id");
-
                     b.Property<string>("PsuFormFactor")
                         .HasColumnType("text")
                         .HasColumnName("psu_form_factor");
@@ -408,9 +407,6 @@ namespace Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_components");
-
-                    b.HasIndex("ProductVariantId")
-                        .HasDatabaseName("ix_components_product_variant_id");
 
                     b.ToTable("components", (string)null);
                 });
@@ -1517,17 +1513,6 @@ namespace Infrastructure.Persistence.Migrations
                     b.Navigation("Parent");
                 });
 
-            modelBuilder.Entity("Domain.Entities.Component", b =>
-                {
-                    b.HasOne("Domain.Entities.ProductVariant", "ProductVariant")
-                        .WithMany("Components")
-                        .HasForeignKey("ProductVariantId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("fk_components_product_variants_product_variant_id");
-
-                    b.Navigation("ProductVariant");
-                });
-
             modelBuilder.Entity("Domain.Entities.CouponRedemption", b =>
                 {
                     b.HasOne("Domain.Entities.Coupon", "Coupon")
@@ -1803,8 +1788,6 @@ namespace Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Domain.Entities.ProductVariant", b =>
                 {
-                    b.Navigation("Components");
-
                     b.Navigation("ProductVariantSpecifications");
                 });
 
