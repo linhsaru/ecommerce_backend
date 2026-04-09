@@ -4,6 +4,7 @@ using Application.Interfaces.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces.Repositories;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,10 +16,20 @@ namespace Application.Services
     public class OrderService : IOrderService
     {
         private readonly IOrderRepository _repo;
+        private readonly IUserRepository _userRepository;
+        private readonly IEmailService _emailService;
+        private readonly ILogger<OrderService> _logger;
 
-        public OrderService(IOrderRepository repo)
+        public OrderService(
+            IOrderRepository repo,
+            IUserRepository userRepository,
+            IEmailService emailService,
+            ILogger<OrderService> logger)
         {
             _repo = repo;
+            _userRepository = userRepository;
+            _emailService = emailService;
+            _logger = logger;
         }
 
         public async Task<Result<CreateOrderResponse>> CreateOrderAsync(CreateOrderRequest request)
@@ -32,9 +43,12 @@ namespace Application.Services
             if (string.IsNullOrWhiteSpace(request.ShippingAddress) || string.IsNullOrWhiteSpace(request.PhoneNumber))
                 return Result<CreateOrderResponse>.Fail("VALIDATION_ERROR", "Thiếu thông tin địa chỉ hoặc số điện thoại giao hàng.");
 
+            if (string.IsNullOrWhiteSpace(request.RecipientEmail))
+                return Result<CreateOrderResponse>.Fail("VALIDATION_ERROR", "Thiếu email người nhận hàng.");
+
             try
             {
-                return await _repo.ExecuteInTransactionAsync(
+                var createResult = await _repo.ExecuteInTransactionAsync(
                     async () =>
                     {
                         var productIds = request.Items.Select(i => i.ProductVariantId).ToList();
@@ -126,10 +140,58 @@ namespace Application.Services
                         });
                     },
                     r => r.IsSuccess);
+
+                if (createResult.IsSuccess)
+                {
+                    await TrySendOrderConfirmationEmailAsync(createResult.Value!, request.UserId, request.RecipientEmail);
+                }
+
+                return createResult;
             }
             catch (Exception ex)
             {
                 return Result<CreateOrderResponse>.Fail("ORDER_CREATE_FAILED", "Tạo đơn hàng thất bại.", ex.Message);
+            }
+        }
+
+        private async Task TrySendOrderConfirmationEmailAsync(CreateOrderResponse createdOrder, Guid? userId, string? recipientEmail)
+        {
+            try
+            {
+                var order = await _repo.GetOrderByIdAsync(createdOrder.OrderId);
+                if (order == null || order.OrderItems.Count == 0)
+                    return;
+
+                Domain.Entities.User? user = null;
+                if (userId.HasValue)
+                {
+                    user = await _userRepository.GetByIdAsync(userId.Value, CancellationToken.None);
+                }
+
+                var targetEmail = string.IsNullOrWhiteSpace(recipientEmail) ? user?.Email : recipientEmail.Trim();
+                if (string.IsNullOrWhiteSpace(targetEmail))
+                    return;
+
+                await _emailService.SendOrderConfirmationAsync(new OrderConfirmationEmailRequest
+                {
+                    RecipientEmail = targetEmail,
+                    RecipientName = user?.FullName,
+                    OrderNo = order.OrderNo,
+                    OrderedAt = order.CreatedAt,
+                    PaymentStatus = order.PaymentStatus,
+                    TotalAmount = order.TotalAmount,
+                    Items = order.OrderItems.Select(item => new OrderConfirmationEmailItem
+                    {
+                        ProductName = item.Name,
+                        VariantName = item.VariantName,
+                        Quantity = item.Quantity
+                    }).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                // Email should not block successful order creation.
+                _logger.LogError(ex, "Failed to send order confirmation email for order {OrderId}", createdOrder.OrderId);
             }
         }
 

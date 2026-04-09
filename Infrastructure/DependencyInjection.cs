@@ -6,6 +6,7 @@ using Domain.Interfaces.Repositories;
 using Infrastructure.Persistence;
 using Infrastructure.Repositories;
 using Infrastructure.Security;
+using Infrastructure.Services;
 using Infrastructure.Utils;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -103,6 +104,7 @@ public static class DependencyInjection
         services.AddScoped<ICouponService, CouponService>();
         services.AddScoped<IPaymentService, PaymentService>();
         services.AddScoped<IOrderService, OrderService>();
+        services.AddScoped<IEmailService, MailKitEmailService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IChatService, ChatService>();
         services.AddScoped<IPcComponentsService, PcComponentsService>();
