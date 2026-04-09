@@ -120,6 +120,7 @@ namespace Application.Services
                         return Result<CreateOrderResponse>.Ok(new CreateOrderResponse
                         {
                             OrderId = order.Id,
+                            OrderNo = order.OrderNo,
                             TotalAmount = totalAmount,
                             Status = order.Status
                         });
@@ -137,6 +138,14 @@ namespace Application.Services
             try
             {
                 var orders = await _repo.GetOrdersByUserIdAsync(userId);
+
+                var variantIds = orders
+                    .SelectMany(o => o.OrderItems)
+                    .Select(i => i.VariantId)
+                    .Distinct()
+                    .ToList();
+                var variants = await _repo.GetVariantsByIdsAsync(variantIds);
+                var variantById = variants.ToDictionary(v => v.Id, v => v);
 
                 var response = orders.Select(order => new MyOrderResponse
                 {
@@ -159,6 +168,13 @@ namespace Application.Services
                         Sku = item.Sku,
                         Name = item.Name,
                         VariantName = item.VariantName,
+                        ProductImageUrl = variantById.TryGetValue(item.VariantId, out var v)
+                            ? (v.Product.ThumbnailUrl ??
+                               v.Product.ProductImages
+                                   .OrderBy(pi => pi.SortOrder)
+                                   .Select(pi => pi.Url)
+                                   .FirstOrDefault())
+                            : null,
                         Quantity = item.Quantity,
                         UnitPrice = item.UnitPrice,
                         LineTotal = item.LineTotal

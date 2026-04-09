@@ -53,7 +53,7 @@ public static class DependencyInjection
             options.Configuration = redisConnection;
         });
         
-        services.AddHttpClient("OpenAI", client =>
+        services.AddHttpClient("Gemini", client =>
         {
             client.Timeout = TimeSpan.FromSeconds(60);
         });
@@ -105,6 +105,8 @@ public static class DependencyInjection
         services.AddScoped<IOrderService, OrderService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IChatService, ChatService>();
+        services.AddScoped<IPcComponentsService, PcComponentsService>();
+        services.AddScoped<IPcBuildGeminiSuggestionService, PcBuildGeminiSuggestionService>();
         //Redis cache services
         services.AddScoped<ICacheService, RedisCacheService>();
 

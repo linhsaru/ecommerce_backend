@@ -41,7 +41,9 @@ public sealed class PaymentService : IPaymentService
         var tmnCode = _configuration["VnPay:TmnCode"]?.Trim();
         var hashSecret = _configuration["VnPay:HashSecret"]?.Trim();
         var baseUrl = _configuration["VnPay:BaseUrl"]?.Trim();
-        var returnUrl = _configuration["VnPay:ReturnUrl"]?.Trim();
+        var returnUrl = string.IsNullOrWhiteSpace(request.ReturnUrl)
+            ? _configuration["VnPay:ReturnUrl"]?.Trim()
+            : request.ReturnUrl.Trim();
         var version = _configuration["VnPay:Version"] ?? "2.1.0";
         var command = _configuration["VnPay:Command"] ?? "pay";
         var currCode = _configuration["VnPay:CurrCode"] ?? "VND";
@@ -171,6 +173,7 @@ public sealed class PaymentService : IPaymentService
         return Result<VnPayCallbackResponse>.Ok(new VnPayCallbackResponse
         {
             OrderId = payment.OrderId,
+            OrderNo = payment.Order?.OrderNo ?? string.Empty,
             TransactionRef = txnRef,
             ResponseCode = responseCode,
             Amount = amount,

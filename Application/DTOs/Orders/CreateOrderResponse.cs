@@ -10,6 +10,8 @@ namespace Application.DTOs.Orders
     public sealed class CreateOrderResponse
     {
         public Guid OrderId { get; set; }
+
+        public string? OrderNo { get; set; }
         public decimal TotalAmount { get; set; }
         public OrderStatus Status { get; set; }
     }
