@@ -62,35 +62,41 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
         var perTypeReturn = Math.Clamp(request.PerTypeReturn, 1, 20);
         var shortlistSize = Math.Clamp(request.ShortlistSize, 5, 10);
         var maxGeneratedBuilds = Math.Clamp(request.MaxGeneratedBuilds, 100, 1500);
-        var maxCheckedCombinations = Math.Clamp(request.MaxCheckedCombinations, 10_000, 300_000);
+        var beamWidth = Math.Clamp(request.MaxCheckedCombinations / 200, 30, 240);
 
         var budget = ParseBudgetRange(request.Budget);
+        var cleanedCatalog = CleanCatalog(catalogResult.Value);
 
-        var filtered = ApplyRuleBasedFiltering(catalogResult.Value, request, perTypeCandidates, budget);
-        var generatedBuilds = GenerateCompatibleBuilds(filtered, maxGeneratedBuilds, maxCheckedCombinations);
-
-        // Retry with broader candidate set before falling back.
-        if (generatedBuilds.Count == 0)
+        var ruleProfiles = new[]
         {
-            var relaxedCandidates = Math.Clamp(perTypeCandidates * 2, 10, 80);
-            var relaxedFiltered = ApplyRuleBasedFiltering(catalogResult.Value, request, relaxedCandidates, budget);
-            generatedBuilds = GenerateCompatibleBuilds(
-                relaxedFiltered,
-                Math.Clamp(maxGeneratedBuilds * 2, 200, 3000),
-                Math.Clamp(maxCheckedCombinations * 3, 30_000, 600_000));
+            BuildRuleProfile.Strict,
+            BuildRuleProfile.RelaxedUnknownFields,
+            BuildRuleProfile.RelaxedPsuUpperBound,
+            BuildRuleProfile.MostRelaxed,
+        };
+
+        var generatedBuilds = new List<BuildConfig>();
+        string? fallbackReason = null;
+        foreach (var rule in ruleProfiles)
+        {
+            var filtered = ApplyDependencyAwareFiltering(cleanedCatalog, request, perTypeCandidates, rule);
+            generatedBuilds = GenerateCompatibleBuildsBeamSearch(filtered, request, budget, beamWidth, maxGeneratedBuilds, rule);
+            if (generatedBuilds.Count > 0)
+                break;
+
+            fallbackReason = rule.RelaxNote;
         }
 
-        string? fallbackReason = null;
         List<BuildConfig> shortlisted;
         if (generatedBuilds.Count == 0)
         {
-            var fallbackBuild = BuildBestEffortBuild(catalogResult.Value, budget);
+            var fallbackBuild = BuildBestEffortCompatibleBuild(cleanedCatalog, request, budget);
             if (fallbackBuild is null)
                 return Result<PcBuildGeminiSuggestResponse>.Fail("NO_BUILD", "No build can be created from current component data.");
 
             fallbackBuild.Score = ScoreBuild(fallbackBuild, request, budget);
             shortlisted = new List<BuildConfig> { fallbackBuild };
-            fallbackReason = "No fully compatible build found, returned best-effort build from available components.";
+            fallbackReason ??= "No build found with strict rules; returned best compatible build under relaxed rules.";
         }
         else
         {
@@ -135,7 +141,7 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
         return Result<PcBuildGeminiSuggestResponse>.Ok(response);
     }
 
-    private static PcComponentsCatalogDto ApplyRuleBasedFiltering(PcComponentsCatalogDto catalog, PcBuildGeminiSuggestRequest request, int perTypeCandidates, BudgetRange budget)
+    private static PcComponentsCatalogDto ApplyDependencyAwareFiltering(PcComponentsCatalogDto catalog, PcBuildGeminiSuggestRequest request, int perTypeCandidates, BuildRuleProfile profile)
     {
         var usage = (request.Usage ?? string.Empty).ToLowerInvariant();
         var perfTags = request.PerformanceTags?.Select(x => x.ToLowerInvariant()).ToList() ?? new List<string>();
@@ -146,91 +152,478 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
         bool creatorLike = usage.Contains("design") || usage.Contains("video") || perfTags.Any(x => x.Contains("multi"));
         bool aiLike = usage.Contains("ai") || usage.Contains("program") || usage.Contains("dev");
 
-        decimal budgetTarget = budget.Target;
+        var rankedCpus = catalog.Cpus
+            .OrderByDescending(x => CpuRuleScore(x, brandPref, gamingLike, creatorLike, aiLike))
+            .ThenByDescending(x => x.Cores)
+            .ThenByDescending(x => x.BoostClock)
+            .ThenBy(x => x.Price)
+            .Take(perTypeCandidates)
+            .ToList();
+
+        var cpuSocketSet = rankedCpus
+            .Select(x => NormalizeSocket(x.Socket))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var motherboards = catalog.Motherboards
+            .Where(mb =>
+            {
+                var mbSocket = NormalizeSocket(mb.Socket);
+                if (string.IsNullOrWhiteSpace(mbSocket))
+                    return profile.AllowUnknownSocket;
+                return cpuSocketSet.Contains(mbSocket);
+            })
+            .OrderBy(x => x.Price)
+            .ThenByDescending(x => x.RamSlots)
+            .Take(perTypeCandidates * 2)
+            .ToList();
+
+        if (motherboards.Count == 0)
+            motherboards = catalog.Motherboards.OrderBy(x => x.Price).Take(perTypeCandidates * 2).ToList();
+
+        var mbRamTypeSet = motherboards
+            .Select(x => NormalizeRamType(x.RamType))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var rams = catalog.Rams
+            .Where(r =>
+            {
+                var ramType = NormalizeRamType(r.Type);
+                if (string.IsNullOrWhiteSpace(ramType))
+                    return profile.AllowUnknownRamType;
+                return mbRamTypeSet.Contains(ramType);
+            })
+            .OrderByDescending(x => RamRuleScore(x, gamingLike, creatorLike, aiLike))
+            .ThenByDescending(x => x.Capacity)
+            .ThenByDescending(x => x.Speed)
+            .ThenBy(x => x.Price)
+            .Take(perTypeCandidates * 2)
+            .ToList();
+
+        if (rams.Count == 0)
+            rams = catalog.Rams.OrderBy(x => x.Price).Take(perTypeCandidates * 2).ToList();
 
         return new PcComponentsCatalogDto
         {
-            Cpus = catalog.Cpus
-                .OrderByDescending(x => CpuRuleScore(x, brandPref, gamingLike, creatorLike, aiLike))
-                .ThenBy(x => Math.Abs(x.Price - budgetTarget * 0.25m))
-                .ThenBy(x => x.Price)
-                .Take(perTypeCandidates)
-                .ToList(),
-
+            Cpus = rankedCpus,
+            Motherboards = motherboards,
+            Rams = rams,
             Gpus = catalog.Gpus
                 .OrderByDescending(x => GpuRuleScore(x, brandPref, officeLike, gamingLike, creatorLike, aiLike))
-                .ThenBy(x => Math.Abs(x.Price - budgetTarget * (gamingLike ? 0.35m : 0.25m)))
                 .ThenBy(x => x.Price)
-                .Take(perTypeCandidates)
+                .Take(perTypeCandidates * 2)
                 .ToList(),
-
-            Rams = catalog.Rams
-                .OrderByDescending(x => RamRuleScore(x, gamingLike, creatorLike, aiLike))
-                .ThenBy(x => Math.Abs(x.Price - budgetTarget * 0.1m))
-                .ThenBy(x => x.Price)
-                .Take(perTypeCandidates)
-                .ToList(),
-
             Storages = catalog.Storages
                 .OrderByDescending(x => StorageRuleScore(x, gamingLike, creatorLike, aiLike))
-                .ThenBy(x => Math.Abs(x.Price - budgetTarget * 0.1m))
                 .ThenBy(x => x.Price)
-                .Take(perTypeCandidates)
+                .Take(perTypeCandidates * 2)
                 .ToList(),
-
-            Motherboards = catalog.Motherboards.OrderBy(x => x.Price).Take(perTypeCandidates).ToList(),
-            Psus = catalog.Psus.OrderByDescending(x => x.Wattage).ThenBy(x => x.Price).Take(perTypeCandidates).ToList(),
-            Cases = catalog.Cases.OrderBy(x => x.Price).Take(perTypeCandidates).ToList(),
-            Coolings = catalog.Coolings.OrderByDescending(x => x.TdpSupport).ThenBy(x => x.Price).Take(perTypeCandidates).ToList(),
+            Psus = catalog.Psus.OrderBy(x => x.Wattage).ThenBy(x => x.Price).Take(perTypeCandidates * 3).ToList(),
+            Cases = catalog.Cases.OrderBy(x => x.Price).Take(perTypeCandidates * 2).ToList(),
+            Coolings = catalog.Coolings.OrderByDescending(x => x.TdpSupport).ThenBy(x => x.Price).Take(perTypeCandidates * 2).ToList(),
         };
     }
 
-    private static List<BuildConfig> GenerateCompatibleBuilds(PcComponentsCatalogDto filtered, int maxGeneratedBuilds, int maxCheckedCombinations)
+    private static List<BuildConfig> GenerateCompatibleBuildsBeamSearch(
+        PcComponentsCatalogDto filtered,
+        PcBuildGeminiSuggestRequest request,
+        BudgetRange budget,
+        int beamWidth,
+        int maxGeneratedBuilds,
+        BuildRuleProfile profile)
     {
         var checker = new CompatibilityChecker();
-        var output = new List<BuildConfig>();
-        var checkedCount = 0;
+        var costModel = CreateBuildStageCostModel(filtered);
+        var beam = filtered.Cpus
+            .Select(cpu => new BuildConfig { Cpu = cpu })
+            .Where(checker.IsPartiallyCompatible)
+            .ToList();
 
-        var gpus = filtered.Gpus.Count > 0 ? filtered.Gpus.Cast<GpuDto?>().ToList() : new List<GpuDto?> { null };
-        var cases = filtered.Cases.Count > 0 ? filtered.Cases.Cast<CaseDto?>().ToList() : new List<CaseDto?> { null };
-        var coolings = filtered.Coolings.Count > 0 ? filtered.Coolings.Cast<CoolingDto?>().ToList() : new List<CoolingDto?> { null };
+        beam = ExpandBeam(
+            beam,
+            cpuBuild => FilterMotherboardsByCpu(filtered.Motherboards, cpuBuild.Cpu!, profile).Select(mb => new BuildConfig { Cpu = cpuBuild.Cpu, Motherboard = mb }),
+            beamWidth,
+            request,
+            budget,
+            BuildStage.CpuMotherboard,
+            costModel,
+            checker);
 
-        foreach (var cpu in filtered.Cpus)
-        foreach (var motherboard in filtered.Motherboards)
-        foreach (var ram in filtered.Rams)
-        foreach (var storage in filtered.Storages)
-        foreach (var psu in filtered.Psus)
-        foreach (var gpu in gpus)
-        foreach (var pcCase in cases)
-        foreach (var cooling in coolings)
-        {
-            checkedCount++;
-            if (checkedCount > maxCheckedCombinations)
-                return output;
+        beam = ExpandBeam(
+            beam,
+            partial => FilterRamsByMotherboard(filtered.Rams, partial.Motherboard!, profile).Select(ram => new BuildConfig { Cpu = partial.Cpu, Motherboard = partial.Motherboard, Ram = ram }),
+            beamWidth,
+            request,
+            budget,
+            BuildStage.Ram,
+            costModel,
+            checker);
 
-            var config = new BuildConfig
+        beam = ExpandBeam(
+            beam,
+            partial => filtered.Storages.Select(storage => new BuildConfig
             {
-                Cpu = cpu,
-                Motherboard = motherboard,
-                Ram = ram,
-                Storage = storage,
-                Psu = psu,
-                Gpu = gpu,
-                Case = pcCase,
-                Cooling = cooling,
-            };
+                Cpu = partial.Cpu,
+                Motherboard = partial.Motherboard,
+                Ram = partial.Ram,
+                Storage = storage
+            }),
+            beamWidth,
+            request,
+            budget,
+            BuildStage.Storage,
+            costModel,
+            checker);
 
-            if (checker.IsCompatible(config))
-                output.Add(config);
+        var gpuOptions = filtered.Gpus.Count > 0 ? filtered.Gpus.Cast<GpuDto?>().ToList() : new List<GpuDto?> { null };
+        beam = ExpandBeam(
+            beam,
+            partial => gpuOptions.Select(gpu => new BuildConfig
+            {
+                Cpu = partial.Cpu,
+                Motherboard = partial.Motherboard,
+                Ram = partial.Ram,
+                Storage = partial.Storage,
+                Gpu = gpu
+            }),
+            beamWidth,
+            request,
+            budget,
+            BuildStage.Gpu,
+            costModel,
+            checker);
 
-            if (output.Count >= maxGeneratedBuilds)
-                return output;
-        }
+        beam = ExpandBeam(
+            beam,
+            partial => FilterPsusByPowerAndConnectors(filtered.Psus, partial.Cpu!, partial.Gpu, profile).Select(psu => new BuildConfig
+            {
+                Cpu = partial.Cpu,
+                Motherboard = partial.Motherboard,
+                Ram = partial.Ram,
+                Storage = partial.Storage,
+                Gpu = partial.Gpu,
+                Psu = psu
+            }),
+            beamWidth,
+            request,
+            budget,
+            BuildStage.Psu,
+            costModel,
+            checker);
 
-        return output;
+        var caseOptions = filtered.Cases.Count > 0 ? filtered.Cases.Cast<CaseDto?>().ToList() : new List<CaseDto?> { null };
+        beam = ExpandBeam(
+            beam,
+            partial => FilterCasesByMotherboard(caseOptions, partial.Motherboard!).Select(pcCase => new BuildConfig
+            {
+                Cpu = partial.Cpu,
+                Motherboard = partial.Motherboard,
+                Ram = partial.Ram,
+                Storage = partial.Storage,
+                Gpu = partial.Gpu,
+                Psu = partial.Psu,
+                Case = pcCase
+            }),
+            beamWidth,
+            request,
+            budget,
+            BuildStage.Case,
+            costModel,
+            checker);
+
+        var coolingOptions = filtered.Coolings.Count > 0 ? filtered.Coolings.Cast<CoolingDto?>().ToList() : new List<CoolingDto?> { null };
+        beam = ExpandBeam(
+            beam,
+            partial => FilterCoolingsByCpu(coolingOptions, partial.Cpu!).Select(cooling => new BuildConfig
+            {
+                Cpu = partial.Cpu,
+                Motherboard = partial.Motherboard,
+                Ram = partial.Ram,
+                Storage = partial.Storage,
+                Gpu = partial.Gpu,
+                Psu = partial.Psu,
+                Case = partial.Case,
+                Cooling = cooling
+            }),
+            Math.Clamp(beamWidth * 2, 60, 400),
+            request,
+            budget,
+            BuildStage.Cooling,
+            costModel,
+            checker);
+
+        return beam
+            .Where(x => x.Cpu is not null && x.Motherboard is not null && x.Ram is not null && x.Storage is not null && x.Psu is not null)
+            .Where(x => checker.IsCompatible(x))
+            .Where(x => IsFinalBudgetAcceptable(x, budget))
+            .OrderByDescending(x => ScoreBuild(x, request, budget))
+            .ThenBy(x => x.TotalPrice)
+            .Take(maxGeneratedBuilds)
+            .ToList();
+    }
+
+    private static bool IsSocketCompatible(string? cpuSocket, string? motherboardSocket)
+    {
+        var a = NormalizeSocket(cpuSocket);
+        var b = NormalizeSocket(motherboardSocket);
+        return !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRamTypeCompatible(string? ramType, string? motherboardRamType)
+    {
+        var a = NormalizeRamType(ramType);
+        var b = NormalizeRamType(motherboardRamType);
+        return !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) && string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeSocket(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var v = value.Trim().ToUpperInvariant();
+        return v.Replace("SOCKET", string.Empty).Replace(" ", string.Empty).Replace("-", string.Empty);
+    }
+
+    private static string NormalizeRamType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var v = value.Trim().ToUpperInvariant();
+        if (v.Contains("DDR5")) return "DDR5";
+        if (v.Contains("DDR4")) return "DDR4";
+        if (v.Contains("DDR3")) return "DDR3";
+        return v.Replace(" ", string.Empty).Replace("-", string.Empty);
+    }
+
+    private static PcComponentsCatalogDto CleanCatalog(PcComponentsCatalogDto catalog)
+    {
+        var cleaned = new PcComponentsCatalogDto
+        {
+            Cpus = catalog.Cpus
+                .Where(x => x.Id != Guid.Empty && x.Price > 0 && !string.IsNullOrWhiteSpace(NormalizeSocket(x.Socket)))
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+            Motherboards = catalog.Motherboards
+                .Where(x => x.Id != Guid.Empty && x.Price > 0)
+                .Select(x =>
+                {
+                    x.Socket = NormalizeSocket(x.Socket);
+                    x.RamType = NormalizeRamType(x.RamType);
+                    x.FormFactor = NormalizeFormFactor(x.FormFactor);
+                    return x;
+                })
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+            Rams = catalog.Rams
+                .Where(x => x.Id != Guid.Empty && x.Price > 0)
+                .Select(x =>
+                {
+                    x.Type = NormalizeRamType(x.Type);
+                    return x;
+                })
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+            Storages = catalog.Storages
+                .Where(x => x.Id != Guid.Empty && x.Price > 0 && x.Capacity > 0)
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+            Gpus = catalog.Gpus
+                .Where(x => x.Id != Guid.Empty && x.Price > 0)
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+            Psus = catalog.Psus
+                .Where(x => x.Id != Guid.Empty && x.Price > 0 && x.Wattage > 0)
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+            Cases = catalog.Cases
+                .Where(x => x.Id != Guid.Empty && x.Price > 0)
+                .Select(x =>
+                {
+                    x.FormFactor = NormalizeFormFactor(x.FormFactor);
+                    x.SupportedFormFactors = x.SupportedFormFactors?
+                        .Where(f => !string.IsNullOrWhiteSpace(f))
+                        .Select(NormalizeFormFactor)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList() ?? new List<string>();
+                    return x;
+                })
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+            Coolings = catalog.Coolings
+                .Where(x => x.Id != Guid.Empty && x.Price > 0)
+                .Select(x =>
+                {
+                    x.SupportedSockets = x.SupportedSockets?
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Select(NormalizeSocket)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    return x;
+                })
+                .GroupBy(x => x.Id)
+                .Select(g => g.First())
+                .ToList(),
+        };
+
+        return cleaned;
+    }
+
+    private static string NormalizeFormFactor(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        var v = value.Trim().ToUpperInvariant().Replace(" ", string.Empty).Replace("-", string.Empty);
+        if (v.Contains("MICROATX") || v == "MATX") return "MICROATX";
+        if (v.Contains("MINIITX") || v == "ITX") return "MINIITX";
+        if (v.Contains("ATX")) return "ATX";
+        return v;
+    }
+
+    private static List<BuildConfig> ExpandBeam(
+        IEnumerable<BuildConfig> seeds,
+        Func<BuildConfig, IEnumerable<BuildConfig>> expand,
+        int beamWidth,
+        PcBuildGeminiSuggestRequest request,
+        BudgetRange budget,
+        BuildStage stage,
+        BuildStageCostModel costModel,
+        CompatibilityChecker checker)
+    {
+        return seeds
+            .SelectMany(expand)
+            .Where(checker.IsPartiallyCompatible)
+            .Where(x => IsPartialBudgetAcceptable(x, budget))
+            .Where(x => CanCompleteWithinBudget(x, stage, budget, costModel))
+            .OrderByDescending(x => ScorePartialBuild(x, request, budget))
+            .ThenBy(x => x.TotalPrice)
+            .Take(beamWidth)
+            .ToList();
+    }
+
+    private static IEnumerable<MotherboardDto> FilterMotherboardsByCpu(IEnumerable<MotherboardDto> motherboards, CpuDto cpu, BuildRuleProfile profile)
+    {
+        var cpuSocket = NormalizeSocket(cpu.Socket);
+        return motherboards.Where(mb =>
+        {
+            var mbSocket = NormalizeSocket(mb.Socket);
+            if (string.IsNullOrWhiteSpace(cpuSocket) || string.IsNullOrWhiteSpace(mbSocket))
+                return profile.AllowUnknownSocket;
+            return string.Equals(cpuSocket, mbSocket, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    private static IEnumerable<RamDto> FilterRamsByMotherboard(IEnumerable<RamDto> rams, MotherboardDto motherboard, BuildRuleProfile profile)
+    {
+        var mbRamType = NormalizeRamType(motherboard.RamType);
+        return rams.Where(ram =>
+        {
+            var ramType = NormalizeRamType(ram.Type);
+            if (string.IsNullOrWhiteSpace(mbRamType) || string.IsNullOrWhiteSpace(ramType))
+                return profile.AllowUnknownRamType;
+            return string.Equals(mbRamType, ramType, StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    private static IEnumerable<PsuDto> FilterPsusByPowerAndConnectors(IEnumerable<PsuDto> psus, CpuDto cpu, GpuDto? gpu, BuildRuleProfile profile)
+    {
+        var estimatedPower = (cpu.Tdp > 0 ? cpu.Tdp : 65) + (gpu?.PowerConsumption ?? 0) + 90;
+        var minRequired = estimatedPower * 1.25;
+        var maxAllowed = profile.PsuMaxMultiplier <= 0 ? int.MaxValue : estimatedPower * profile.PsuMaxMultiplier;
+        var requiredConnectors = (gpu?.RequiredConnectors ?? new List<string>())
+            .Select(NormalizeConnector)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        return psus.Where(psu =>
+        {
+            if (psu.Wattage < minRequired || psu.Wattage > maxAllowed)
+                return false;
+
+            if (requiredConnectors.Count == 0)
+                return true;
+
+            var available = (psu.PcieConnectors ?? new List<string>())
+                .Select(NormalizeConnector)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+            if (available.Count == 0)
+                return false;
+
+            return requiredConnectors.All(req => available.Any(av => av.Contains(req, StringComparison.OrdinalIgnoreCase) || req.Contains(av, StringComparison.OrdinalIgnoreCase)));
+        });
+    }
+
+    private readonly record struct BuildRuleProfile(
+        bool AllowUnknownSocket,
+        bool AllowUnknownRamType,
+        double PsuMaxMultiplier,
+        string RelaxNote)
+    {
+        public static readonly BuildRuleProfile Strict = new(
+            AllowUnknownSocket: false,
+            AllowUnknownRamType: false,
+            PsuMaxMultiplier: 2.2,
+            RelaxNote: "Strict dependency rules returned no candidate.");
+
+        public static readonly BuildRuleProfile RelaxedUnknownFields = new(
+            AllowUnknownSocket: true,
+            AllowUnknownRamType: true,
+            PsuMaxMultiplier: 2.2,
+            RelaxNote: "Relaxed unknown socket/RAM type fields.");
+
+        public static readonly BuildRuleProfile RelaxedPsuUpperBound = new(
+            AllowUnknownSocket: true,
+            AllowUnknownRamType: true,
+            PsuMaxMultiplier: 3.2,
+            RelaxNote: "Relaxed PSU upper-bound rule.");
+
+        public static readonly BuildRuleProfile MostRelaxed = new(
+            AllowUnknownSocket: true,
+            AllowUnknownRamType: true,
+            PsuMaxMultiplier: 4.5,
+            RelaxNote: "Most-relaxed rule profile used.");
     }
 
     private static double ScoreBuild(BuildConfig build, PcBuildGeminiSuggestRequest request, BudgetRange budget)
+    {
+        var score = ScorePartialBuild(build, request, budget);
+        var usage = (request.Usage ?? string.Empty).ToLowerInvariant();
+        var total = (double)build.TotalPrice;
+
+        var gpuPower = build.Gpu?.PowerConsumption ?? 0;
+        var estimatedPower = (build.Cpu?.Tdp ?? 65) + (build.Gpu?.PowerConsumption ?? 0) + 90;
+        var psuHeadroom = (build.Psu?.Wattage ?? 0) - estimatedPower;
+        score += psuHeadroom >= 150 ? 8 : psuHeadroom >= 80 ? 4 : 0;
+
+        // Final-only budget penalties/rewards to strongly avoid over-budget builds.
+        if (budget.Max > 0 && build.TotalPrice > budget.Max)
+        {
+            var overRatio = (double)(build.TotalPrice - budget.Max) / (double)budget.Max;
+            score -= 80 + overRatio * 300;
+        }
+        else if (build.TotalPrice >= budget.Min)
+        {
+            score += 12;
+        }
+
+        if (usage.Contains("office") || usage.Contains("study"))
+            score += total <= (double)budget.Target ? 6 : 0;
+
+        return score;
+    }
+
+    private static double ScorePartialBuild(BuildConfig build, PcBuildGeminiSuggestRequest request, BudgetRange budget)
     {
         var usage = (request.Usage ?? string.Empty).ToLowerInvariant();
         var perfTags = request.PerformanceTags?.Select(x => x.ToLowerInvariant()).ToList() ?? new List<string>();
@@ -239,14 +632,14 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
         var score = 0.0;
         var total = (double)build.TotalPrice;
         var diffRatio = budgetTarget <= 0 ? 0 : Math.Abs(total - budgetTarget) / budgetTarget;
-        score += Math.Max(0, 40 - diffRatio * 100);
+        score += Math.Max(0, 36 - diffRatio * 85);
 
         if (build.TotalPrice >= budget.Min && (budget.Max <= 0 || build.TotalPrice <= budget.Max))
-            score += 20;
+            score += 16;
 
-        if (!string.IsNullOrWhiteSpace(build.Cpu?.Socket)) score += 3;
-        if (!string.IsNullOrWhiteSpace(build.Motherboard?.Socket)) score += 3;
-        if (!string.IsNullOrWhiteSpace(build.Ram?.Type)) score += 2;
+        if (build.Cpu is not null && !string.IsNullOrWhiteSpace(build.Cpu.Socket)) score += 3;
+        if (build.Motherboard is not null && !string.IsNullOrWhiteSpace(build.Motherboard.Socket)) score += 3;
+        if (build.Ram is not null && !string.IsNullOrWhiteSpace(build.Ram.Type)) score += 2;
 
         var gpuPower = build.Gpu?.PowerConsumption ?? 0;
         var gpuVram = build.Gpu?.Vram ?? 0;
@@ -255,22 +648,140 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
         var storageCap = build.Storage?.Capacity ?? 0;
 
         if (usage.Contains("gaming") || perfTags.Any(x => x.Contains("fps")))
-            score += gpuVram * 1.8 + gpuPower * 0.06 + cpuCores * 0.7;
+            score += gpuVram * 1.6 + gpuPower * 0.05 + cpuCores * 0.7;
 
         if (usage.Contains("design") || usage.Contains("video") || perfTags.Any(x => x.Contains("multi")))
-            score += cpuCores * 1.3 + ramCap * 0.8 + storageCap * 0.02;
+            score += cpuCores * 1.2 + ramCap * 0.7 + storageCap * 0.02;
 
         if (usage.Contains("ai") || usage.Contains("program") || usage.Contains("dev"))
-            score += cpuCores * 1.5 + ramCap * 0.9 + gpuVram * 1.0;
-
-        if (usage.Contains("office") || usage.Contains("study"))
-            score += total < budgetTarget ? 10 : 2;
-
-        var estimatedPower = (build.Cpu?.Tdp ?? 65) + (build.Gpu?.PowerConsumption ?? 0) + 90;
-        var psuHeadroom = (build.Psu?.Wattage ?? 0) - estimatedPower;
-        score += psuHeadroom >= 150 ? 8 : psuHeadroom >= 80 ? 4 : 0;
+            score += cpuCores * 1.4 + ramCap * 0.8 + gpuVram * 0.9;
 
         return score;
+    }
+
+    private static IEnumerable<CaseDto?> FilterCasesByMotherboard(IEnumerable<CaseDto?> cases, MotherboardDto motherboard)
+    {
+        var mbForm = NormalizeFormFactor(motherboard.FormFactor);
+        return cases.Where(c =>
+        {
+            if (c is null)
+                return true;
+
+            var supported = (c.SupportedFormFactors ?? new List<string>())
+                .Select(NormalizeFormFactor)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .ToList();
+            if (supported.Count == 0)
+                return string.Equals(NormalizeFormFactor(c.FormFactor), mbForm, StringComparison.OrdinalIgnoreCase);
+            return supported.Any(x => string.Equals(x, mbForm, StringComparison.OrdinalIgnoreCase));
+        });
+    }
+
+    private static IEnumerable<CoolingDto?> FilterCoolingsByCpu(IEnumerable<CoolingDto?> coolings, CpuDto cpu)
+    {
+        var cpuSocket = NormalizeSocket(cpu.Socket);
+        return coolings.Where(cooling =>
+        {
+            if (cooling is null)
+                return true;
+
+            if (cooling.TdpSupport > 0 && cpu.Tdp > 0 && cooling.TdpSupport + 10 < cpu.Tdp)
+                return false;
+
+            if (cooling.SupportedSockets is null || cooling.SupportedSockets.Count == 0)
+                return true;
+
+            return cooling.SupportedSockets
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(NormalizeSocket)
+                .Any(s => string.Equals(s, cpuSocket, StringComparison.OrdinalIgnoreCase));
+        });
+    }
+
+    private static bool IsPartialBudgetAcceptable(BuildConfig build, BudgetRange budget)
+    {
+        if (budget.Max <= 0)
+            return true;
+        return build.TotalPrice <= budget.Max * 1.10m;
+    }
+
+    private static bool IsFinalBudgetAcceptable(BuildConfig build, BudgetRange budget)
+    {
+        if (budget.Max > 0 && build.TotalPrice > budget.Max)
+            return false;
+        if (budget.Min > 0 && build.TotalPrice < budget.Min * 0.85m)
+            return false;
+        return true;
+    }
+
+    private static bool CanCompleteWithinBudget(BuildConfig partial, BuildStage stage, BudgetRange budget, BuildStageCostModel costModel)
+    {
+        if (budget.Max <= 0)
+            return true;
+
+        var minRemaining = GetMinRemainingCost(stage, costModel);
+        if (minRemaining < 0)
+            return false;
+
+        return partial.TotalPrice + minRemaining <= budget.Max;
+    }
+
+    private static decimal GetMinRemainingCost(BuildStage stage, BuildStageCostModel costModel)
+    {
+        var unknown = -1m;
+        return stage switch
+        {
+            BuildStage.CpuMotherboard => SumKnown(costModel.MinRam, costModel.MinStorage, costModel.MinGpuNullable, costModel.MinPsu, costModel.MinCaseNullable, costModel.MinCoolingNullable),
+            BuildStage.Ram => SumKnown(costModel.MinStorage, costModel.MinGpuNullable, costModel.MinPsu, costModel.MinCaseNullable, costModel.MinCoolingNullable),
+            BuildStage.Storage => SumKnown(costModel.MinGpuNullable, costModel.MinPsu, costModel.MinCaseNullable, costModel.MinCoolingNullable),
+            BuildStage.Gpu => SumKnown(costModel.MinPsu, costModel.MinCaseNullable, costModel.MinCoolingNullable),
+            BuildStage.Psu => SumKnown(costModel.MinCaseNullable, costModel.MinCoolingNullable),
+            BuildStage.Case => SumKnown(costModel.MinCoolingNullable),
+            BuildStage.Cooling => 0m,
+            _ => unknown
+        };
+    }
+
+    private static decimal SumKnown(params decimal[] values)
+    {
+        decimal sum = 0;
+        foreach (var v in values)
+        {
+            if (v < 0)
+                return -1m;
+            sum += v;
+        }
+        return sum;
+    }
+
+    private static BuildStageCostModel CreateBuildStageCostModel(PcComponentsCatalogDto filtered)
+    {
+        return new BuildStageCostModel(
+            MinRam: MinPriceOrUnknown(filtered.Rams),
+            MinStorage: MinPriceOrUnknown(filtered.Storages),
+            MinGpuNullable: MinPriceOrZero(filtered.Gpus),
+            MinPsu: MinPriceOrUnknown(filtered.Psus),
+            MinCaseNullable: MinPriceOrZero(filtered.Cases),
+            MinCoolingNullable: MinPriceOrZero(filtered.Coolings));
+    }
+
+    private static decimal MinPriceOrUnknown<T>(IEnumerable<T> items) where T : BaseComponentDto
+    {
+        var list = items.ToList();
+        return list.Count == 0 ? -1m : list.Min(x => x.Price);
+    }
+
+    private static decimal MinPriceOrZero<T>(IEnumerable<T> items) where T : BaseComponentDto
+    {
+        var list = items.ToList();
+        return list.Count == 0 ? 0m : list.Min(x => x.Price);
+    }
+
+    private static string NormalizeConnector(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        return value.Trim().ToUpperInvariant().Replace(" ", string.Empty).Replace("-", string.Empty);
     }
 
     private async Task<(BuildConfig? PickedBuild, string? Reason, string? Raw)> ChooseFinalBuildByGeminiAsync(
@@ -427,29 +938,13 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
         return score;
     }
 
-    private static BuildConfig? BuildBestEffortBuild(PcComponentsCatalogDto catalog, BudgetRange budget)
+    private static BuildConfig? BuildBestEffortCompatibleBuild(PcComponentsCatalogDto catalog, PcBuildGeminiSuggestRequest request, BudgetRange budget)
     {
-        if (catalog.Cpus.Count == 0 || catalog.Motherboards.Count == 0 || catalog.Rams.Count == 0 ||
-            catalog.Storages.Count == 0 || catalog.Psus.Count == 0)
-            return null;
-
-        var target = budget.Target <= 0 ? 20_000_000m : budget.Target;
-
-        return new BuildConfig
-        {
-            Cpu = PickClosestByPrice(catalog.Cpus, target * 0.25m),
-            Motherboard = PickClosestByPrice(catalog.Motherboards, target * 0.15m),
-            Ram = PickClosestByPrice(catalog.Rams, target * 0.12m),
-            Storage = PickClosestByPrice(catalog.Storages, target * 0.12m),
-            Psu = PickClosestByPrice(catalog.Psus, target * 0.10m),
-            Gpu = catalog.Gpus.Count > 0 ? PickClosestByPrice(catalog.Gpus, target * 0.28m) : null,
-            Case = catalog.Cases.Count > 0 ? PickClosestByPrice(catalog.Cases, target * 0.08m) : null,
-            Cooling = catalog.Coolings.Count > 0 ? PickClosestByPrice(catalog.Coolings, target * 0.05m) : null,
-        };
+        var fallbackRules = BuildRuleProfile.MostRelaxed with { PsuMaxMultiplier = 0 };
+        var filtered = ApplyDependencyAwareFiltering(catalog, request, 40, fallbackRules);
+        var builds = GenerateCompatibleBuildsBeamSearch(filtered, request, budget, 260, 20, fallbackRules);
+        return builds.OrderByDescending(x => ScoreBuild(x, request, budget)).ThenBy(x => x.TotalPrice).FirstOrDefault();
     }
-
-    private static T PickClosestByPrice<T>(IEnumerable<T> items, decimal targetPrice) where T : BaseComponentDto
-        => items.OrderBy(x => Math.Abs(x.Price - targetPrice)).ThenBy(x => x.Price).First();
 
     private static string BuildMessageFromSelections(PcBuildGeminiSuggestRequest request)
     {
@@ -550,4 +1045,22 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
     }
 
     private readonly record struct BudgetRange(decimal Min, decimal Max, decimal Target);
+    private enum BuildStage
+    {
+        CpuMotherboard,
+        Ram,
+        Storage,
+        Gpu,
+        Psu,
+        Case,
+        Cooling
+    }
+
+    private readonly record struct BuildStageCostModel(
+        decimal MinRam,
+        decimal MinStorage,
+        decimal MinGpuNullable,
+        decimal MinPsu,
+        decimal MinCaseNullable,
+        decimal MinCoolingNullable);
 }

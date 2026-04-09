@@ -25,6 +25,30 @@ public sealed class PcComponentsService : IPcComponentsService
             .ThenBy(x => x.Id)
             .ToListAsync(cancellationToken);
 
+        var variantIds = components
+            .Where(x => x.ProductVariantId.HasValue)
+            .Select(x => x.ProductVariantId!.Value)
+            .Distinct()
+            .ToList();
+
+        var variantLookup = await _db.ProductVariants
+            .AsNoTracking()
+            .Where(x => variantIds.Contains(x.Id))
+            .Select(x => new VariantLookupItem
+            {
+                VariantId = x.Id,
+                ProductId = x.ProductId,
+                ProductName = x.Product.Name,
+                ProductSlug = x.Product.Slug,
+                ProductThumbnailUrl = x.Product.ThumbnailUrl,
+                Sku = x.Sku,
+                VariantName = x.VariantName,
+                VariantPrice = x.Price,
+                CompareAt = x.CompareAt,
+                VariantStatus = x.Status
+            })
+            .ToDictionaryAsync(x => x.VariantId, x => x, cancellationToken);
+
         var catalog = new PcComponentsCatalogDto();
 
         foreach (var c in components)
@@ -35,7 +59,7 @@ public sealed class PcComponentsService : IPcComponentsService
             switch (type)
             {
                 case "cpu":
-                    catalog.Cpus.Add(new CpuDto
+                    var cpu = new CpuDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -44,11 +68,13 @@ public sealed class PcComponentsService : IPcComponentsService
                         Tdp = c.Tdp ?? 0,
                         Cores = c.Cores ?? 0,
                         BoostClock = c.BoostClock ?? 0,
-                    });
+                    };
+                    ApplyVariantMetadata(cpu, sourceVariantId, variantLookup);
+                    catalog.Cpus.Add(cpu);
                     break;
 
                 case "gpu":
-                    catalog.Gpus.Add(new GpuDto
+                    var gpu = new GpuDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -58,11 +84,13 @@ public sealed class PcComponentsService : IPcComponentsService
                         PowerConsumption = c.PowerConsumption ?? 0,
                         RequiredConnectors = c.RequiredConnectors ?? new List<string>(),
                         RecommendedPsu = c.RecommendedPsu ?? 0,
-                    });
+                    };
+                    ApplyVariantMetadata(gpu, sourceVariantId, variantLookup);
+                    catalog.Gpus.Add(gpu);
                     break;
 
                 case "motherboard":
-                    catalog.Motherboards.Add(new MotherboardDto
+                    var motherboard = new MotherboardDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -76,11 +104,13 @@ public sealed class PcComponentsService : IPcComponentsService
                         M2Slots = c.M2Slots ?? 0,
                         SataPorts = c.SataPorts ?? 0,
                         PcieVersion = c.PcieVersion ?? string.Empty,
-                    });
+                    };
+                    ApplyVariantMetadata(motherboard, sourceVariantId, variantLookup);
+                    catalog.Motherboards.Add(motherboard);
                     break;
 
                 case "ram":
-                    catalog.Rams.Add(new RamDto
+                    var ram = new RamDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -88,11 +118,13 @@ public sealed class PcComponentsService : IPcComponentsService
                         Capacity = c.Capacity ?? 0,
                         Speed = c.Speed ?? 0,
                         Type = c.MemoryType ?? string.Empty,
-                    });
+                    };
+                    ApplyVariantMetadata(ram, sourceVariantId, variantLookup);
+                    catalog.Rams.Add(ram);
                     break;
 
                 case "storage":
-                    catalog.Storages.Add(new StorageDto
+                    var storage = new StorageDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -100,11 +132,13 @@ public sealed class PcComponentsService : IPcComponentsService
                         Capacity = c.Capacity ?? 0,
                         Type = c.DriveFormFactor ?? string.Empty,
                         Interface = c.DriveInterface ?? string.Empty,
-                    });
+                    };
+                    ApplyVariantMetadata(storage, sourceVariantId, variantLookup);
+                    catalog.Storages.Add(storage);
                     break;
 
                 case "psu":
-                    catalog.Psus.Add(new PsuDto
+                    var psu = new PsuDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -112,11 +146,13 @@ public sealed class PcComponentsService : IPcComponentsService
                         Certification = c.Certification ?? string.Empty,
                         PcieConnectors = c.PcieConnectors ?? new List<string>(),
                         CpuConnector = c.CpuConnector,
-                    });
+                    };
+                    ApplyVariantMetadata(psu, sourceVariantId, variantLookup);
+                    catalog.Psus.Add(psu);
                     break;
 
                 case "case":
-                    catalog.Cases.Add(new CaseDto
+                    var pcCase = new CaseDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -126,11 +162,13 @@ public sealed class PcComponentsService : IPcComponentsService
                         MaxCoolerHeight = c.MaxCoolerHeight ?? 0,
                         SupportedFormFactors = c.SupportedFormFactors ?? new List<string>(),
                         PsuFormFactor = c.PsuFormFactor ?? string.Empty,
-                    });
+                    };
+                    ApplyVariantMetadata(pcCase, sourceVariantId, variantLookup);
+                    catalog.Cases.Add(pcCase);
                     break;
 
                 case "cooling":
-                    catalog.Coolings.Add(new CoolingDto
+                    var cooling = new CoolingDto
                     {
                         Id = sourceVariantId,
                         Price = c.Price,
@@ -138,11 +176,43 @@ public sealed class PcComponentsService : IPcComponentsService
                         TdpSupport = c.TdpSupport ?? 0,
                         SupportedSockets = c.SupportedSockets ?? new List<string>(),
                         Height = c.Height ?? 0,
-                    });
+                    };
+                    ApplyVariantMetadata(cooling, sourceVariantId, variantLookup);
+                    catalog.Coolings.Add(cooling);
                     break;
             }
         }
 
         return Result<PcComponentsCatalogDto>.Ok(catalog);
+    }
+
+    private static void ApplyVariantMetadata(BaseComponentDto dto, Guid sourceVariantId, IReadOnlyDictionary<Guid, VariantLookupItem> variantLookup)
+    {
+        if (!variantLookup.TryGetValue(sourceVariantId, out var v))
+            return;
+
+        dto.ProductId = v.ProductId;
+        dto.ProductName = v.ProductName;
+        dto.ProductSlug = v.ProductSlug;
+        dto.ProductThumbnailUrl = v.ProductThumbnailUrl;
+        dto.Sku = v.Sku;
+        dto.VariantName = v.VariantName;
+        dto.VariantPrice = v.VariantPrice;
+        dto.CompareAt = v.CompareAt;
+        dto.VariantStatus = v.VariantStatus;
+    }
+
+    private sealed class VariantLookupItem
+    {
+        public Guid VariantId { get; set; }
+        public Guid ProductId { get; set; }
+        public string ProductName { get; set; } = string.Empty;
+        public string ProductSlug { get; set; } = string.Empty;
+        public string? ProductThumbnailUrl { get; set; }
+        public string Sku { get; set; } = string.Empty;
+        public string? VariantName { get; set; }
+        public decimal VariantPrice { get; set; }
+        public decimal? CompareAt { get; set; }
+        public int VariantStatus { get; set; }
     }
 }

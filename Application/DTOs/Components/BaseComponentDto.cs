@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,6 +14,15 @@ namespace Application.DTOs.Components
     {
         public Guid Id { get; set; }
         public decimal Price { get; set; }
+        public Guid? ProductId { get; set; }
+        public string? ProductName { get; set; }
+        public string? ProductSlug { get; set; }
+        public string? ProductThumbnailUrl { get; set; }
+        public string? Sku { get; set; }
+        public string? VariantName { get; set; }
+        public decimal? VariantPrice { get; set; }
+        public decimal? CompareAt { get; set; }
+        public int? VariantStatus { get; set; }
     }
 
     public class CaseDto : BaseComponentDto
