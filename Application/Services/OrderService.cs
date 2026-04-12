@@ -184,7 +184,8 @@ namespace Application.Services
                     {
                         ProductName = item.Name,
                         VariantName = item.VariantName,
-                        Quantity = item.Quantity
+                        Quantity = item.Quantity,
+                        LineTotal = item.LineTotal
                     }).ToList()
                 });
             }

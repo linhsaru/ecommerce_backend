@@ -18,6 +18,8 @@ namespace Domain.Interfaces.Repositories
         Task<bool> ExistsByIdAsync(Guid id, CancellationToken ct = default);
         void Add(Product product);
         void Update(Product product);
+        void AddProductVariant(ProductVariant variant);
+        Task<bool> ExistsVariantSkuAsync(string sku, CancellationToken ct = default);
         void AddProductCategories(IEnumerable<ProductCategory> productCategories);
         void RemoveProductCategories(IEnumerable<ProductCategory> productCategories);
         Task<int> SaveChangesAsync(CancellationToken ct = default);

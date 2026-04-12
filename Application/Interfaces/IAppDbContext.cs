@@ -27,7 +27,7 @@ public interface IAppDbContext
     DbSet<OrderItem> OrderItems { get; }
     DbSet<Payment> Payments { get; }
     DbSet<Shipment> Shipments { get; }
-    DbSet<ProductReview> ProductReviews { get; }
+
     DbSet<Promotion> Promotions { get; }
     DbSet<PromotionProduct> PromotionProducts { get; }
 

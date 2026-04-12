@@ -1,4 +1,4 @@
-﻿using Application.DTOs.Orders;
+using Application.DTOs.Orders;
 using Application.Interfaces.Services;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -71,6 +71,7 @@ namespace Infrastructure.Services
                 <tr>
                     <td style='padding:8px;border:1px solid #ddd;'>{item.ProductName}{variant}</td>
                     <td style='padding:8px;border:1px solid #ddd;text-align:center;'>{item.Quantity}</td>
+                    <td style='padding:8px;border:1px solid #ddd;text-align:right;'>{item.LineTotal.ToString("N0", culture)} VND</td>
                 </tr>";
                 }));
 
@@ -107,6 +108,7 @@ namespace Infrastructure.Services
                     <tr style='background-color:#f5f5f5;'>
                         <th style='padding:8px;border:1px solid #ddd;'>Sản phẩm</th>
                         <th style='padding:8px;border:1px solid #ddd;'>Số lượng</th>
+                        <th style='padding:8px;border:1px solid #ddd;'>Thành tiền</th>
                     </tr>
                     {itemsHtml}
                 </table>

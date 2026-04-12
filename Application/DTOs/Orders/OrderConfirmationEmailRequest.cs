@@ -18,5 +18,6 @@ namespace Application.DTOs.Orders
         public string ProductName { get; set; } = null!;
         public string? VariantName { get; set; }
         public int Quantity { get; set; }
+        public decimal LineTotal { get; set; }
     }
 }

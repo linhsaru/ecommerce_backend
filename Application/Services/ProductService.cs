@@ -192,6 +192,20 @@ public sealed class ProductService : IProductService
         if (exists)
             return Result<ProductDto>.Fail("VALIDATION_ERROR", "Slug already exists.");
 
+        if (request.InitialVariant != null)
+        {
+            var iv = request.InitialVariant;
+            if (string.IsNullOrWhiteSpace(iv.Sku))
+                return Result<ProductDto>.Fail("VALIDATION_ERROR", "SKU biến thể không được để trống.");
+            if (iv.Price <= 0)
+                return Result<ProductDto>.Fail("VALIDATION_ERROR", "Giá biến thể phải lớn hơn 0.");
+            if (iv.Cost.HasValue && iv.Cost.Value < 0)
+                return Result<ProductDto>.Fail("VALIDATION_ERROR", "Giá nhập (cost) không được âm.");
+            var sku = iv.Sku.Trim();
+            if (await _productRepo.ExistsVariantSkuAsync(sku, cancellationToken))
+                return Result<ProductDto>.Fail("VALIDATION_ERROR", "SKU đã tồn tại.");
+        }
+
         var product = new Product
         {
             Name = request.Name,
@@ -212,19 +226,29 @@ public sealed class ProductService : IProductService
             await _productRepo.SaveChangesAsync(cancellationToken);
         }
 
-        return Result<ProductDto>.Ok(new ProductDto
+        if (request.InitialVariant != null)
         {
-            Id = product.Id,
-            BrandId = product.BrandId,
-            BrandName = product.Brand?.Name,
-            Name = product.Name,
-            Slug = product.Slug,
-            Description = product.Description,
-            Status = product.Status,
-            ThumbnailUrl = product.ThumbnailUrl,
-            CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
-        });
+            var iv = request.InitialVariant;
+            var variant = new ProductVariant
+            {
+                Id = Guid.NewGuid(),
+                ProductId = product.Id,
+                Sku = iv.Sku.Trim(),
+                VariantName = string.IsNullOrWhiteSpace(iv.VariantName) ? null : iv.VariantName.Trim(),
+                Price = iv.Price,
+                CompareAt = iv.CompareAt,
+                Cost = iv.Cost,
+                Status = 1
+            };
+            _productRepo.AddProductVariant(variant);
+            await _productRepo.SaveChangesAsync(cancellationToken);
+        }
+
+        var reloaded = await _productRepo.GetByIdAsync(product.Id, cancellationToken);
+        if (reloaded == null)
+            return Result<ProductDto>.Fail("NOT_FOUND", "Không tìm thấy sản phẩm sau khi tạo.");
+
+        return Result<ProductDto>.Ok(MapProductToDto(reloaded));
     }
 
     public async Task<Result<ProductDto>> UpdateAsync(Guid id, UpdateProductRequest request, CancellationToken cancellationToken = default)
@@ -258,18 +282,11 @@ public sealed class ProductService : IProductService
         product.UpdatedAt = DateTimeOffset.UtcNow;
         await _productRepo.SaveChangesAsync(cancellationToken);
 
-        return Result<ProductDto>.Ok(new ProductDto
-        {
-            Id = product.Id,
-            BrandId = product.BrandId,
-            Name = product.Name,
-            Slug = product.Slug,
-            Description = product.Description,
-            Status = product.Status,
-            ThumbnailUrl = product.ThumbnailUrl,
-            CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
-        });
+        var reloaded = await _productRepo.GetByIdAsync(id, cancellationToken);
+        if (reloaded == null)
+            return Result<ProductDto>.Fail("NOT_FOUND", "Không tìm thấy sản phẩm sau khi cập nhật.");
+
+        return Result<ProductDto>.Ok(MapProductToDto(reloaded));
     }
 
     public async Task<Result> DeleteAsync(Guid id, CancellationToken cancellationToken = default)
@@ -281,6 +298,54 @@ public sealed class ProductService : IProductService
         product.MarkDeleted(null);
         await _productRepo.SaveChangesAsync(cancellationToken);
         return Result.Ok();
+    }
+
+    
+    private static ProductDto MapProductToDto(Product p)
+    {
+        var activeVariants = (p.ProductVariants ?? Enumerable.Empty<ProductVariant>())
+            .Where(v => v.DeletedAt == null && v.Status == 1)
+            .OrderBy(v => v.Price)
+            .ToList();
+
+        var first = activeVariants.FirstOrDefault();
+        decimal? originalPrice = null;
+        decimal? discountedPrice = null;
+        decimal? discountPercent = null;
+
+        if (first != null)
+        {
+            originalPrice = (decimal)Math.Round((first.CompareAt ?? first.Price), 2);
+            discountedPrice = (decimal)Math.Round(first.Price, 2);
+            if (first.CompareAt != null && first.CompareAt > 0 && first.Price < first.CompareAt)
+                discountPercent = (decimal)Math.Round(((first.CompareAt.Value - first.Price) / first.CompareAt.Value * 100), 2);
+        }
+
+        return new ProductDto
+        {
+            Id = p.Id,
+            BrandId = p.BrandId,
+            BrandName = p.Brand?.Name,
+            Name = p.Name,
+            Slug = p.Slug,
+            Description = p.Description,
+            Status = p.Status,
+            ThumbnailUrl = p.ThumbnailUrl,
+            OriginalPrice = originalPrice,
+            DiscountedPrice = discountedPrice,
+            DiscountPercent = discountPercent,
+            imageProduct = (p.ProductImages ?? Enumerable.Empty<ProductImage>())
+                .OrderBy(img => img.SortOrder)
+                .Select(img => new ProductImageDto
+                {
+                    Id = img.Id,
+                    Url = img.Url,
+                    Alt = img.Alt,
+                    SortOrder = img.SortOrder
+                }),
+            CreatedAt = p.CreatedAt,
+            UpdatedAt = p.UpdatedAt
+        };
     }
 
     private static ProductDetailDto MapToDetail(Product p)
@@ -338,6 +403,7 @@ public sealed class ProductService : IProductService
         VariantName = v.VariantName,
         Price = v.Price,
         CompareAt = v.CompareAt,
+        Cost = v.Cost,
         Status = v.Status,
         Specifications = v.ProductVariantSpecifications
             .Select(s => new SpecificationItemDto

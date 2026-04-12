@@ -21,6 +21,11 @@ namespace Infrastructure.Repositories
         public void Add(Product product) => _db.Products.Add(product);
         public void Update(Product product)
             => _db.Products.Update(product);
+        public void AddProductVariant(ProductVariant variant)
+            => _db.ProductVariants.Add(variant);
+
+        public async Task<bool> ExistsVariantSkuAsync(string sku, CancellationToken ct = default)
+            => await _db.ProductVariants.AnyAsync(v => v.Sku == sku && v.DeletedAt == null, ct);
         public void AddProductCategories(IEnumerable<ProductCategory> productCategories)
         {
             _db.ProductCategories.AddRange(productCategories);
