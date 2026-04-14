@@ -1,5 +1,6 @@
 using Application.DTOs.Orders;
 using Application.Interfaces.Services;
+using Domain.Enums;
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using Microsoft.Extensions.Configuration;
@@ -24,7 +25,7 @@ namespace Infrastructure.Services
             var username = _configuration["Email:Username"];
             var password = _configuration["Email:Password"];
             var fromEmail = _configuration["Email:FromEmail"] ?? username;
-            var fromName = _configuration["Email:FromName"] ?? "Ecommerce Shop";
+            var fromName = _configuration["Email:FromName"] ?? "LH Computer";
             var portValue = _configuration["Email:Port"];
             var useSslValue = _configuration["Email:UseSsl"];
 
@@ -63,6 +64,12 @@ namespace Infrastructure.Services
             var culture = new CultureInfo("vi-VN");
             var displayName = string.IsNullOrWhiteSpace(request.RecipientName) ? "bạn" : request.RecipientName;
             var vietnamTime = request.OrderedAt.ToOffset(TimeSpan.FromHours(7));
+            var paymentStatus = request.PaymentStatus switch
+            {
+                PaymentStatus.unpaid => "Chưa thanh toán",
+                PaymentStatus.paid => "Đã thanh toán",
+                PaymentStatus.refunded => "Hoàn tiền"
+            };
 
             var itemsHtml = string.Join("", request.Items.Select(item =>
             {
@@ -93,8 +100,16 @@ namespace Infrastructure.Services
                         <td style='padding:8px;'>{vietnamTime:dd/MM/yyyy HH:mm:ss}</td>
                     </tr>
                     <tr>
+                        <td style='padding:8px;'><b>Địa chỉ nhận hàng:</b></td>
+                        <td style='padding:8px;'>{request.ReciptientAddress}</td>
+                    </tr>
+                    <tr>
+                        <td style='padding:8px;'><b>Số điện thoại:</b></td>
+                        <td style='padding:8px;'>{request.PhoneNumber}</td>
+                    </tr>
+                    <tr>
                         <td style='padding:8px;'><b>Trạng thái thanh toán:</b></td>
-                        <td style='padding:8px;'><b>{request.PaymentStatus}</b></td>
+                        <td style='padding:8px;'><b>{paymentStatus}</b></td>
                     </tr>
                     <tr>
                         <td style='padding:8px;'><b>Tổng tiền:</b></td>

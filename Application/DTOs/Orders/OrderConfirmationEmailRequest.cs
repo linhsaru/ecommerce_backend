@@ -6,6 +6,8 @@ namespace Application.DTOs.Orders
     {
         public string RecipientEmail { get; set; } = null!;
         public string? RecipientName { get; set; }
+        public string? ReciptientAddress { get; set; }
+        public string? PhoneNumber { get; set; }
         public string OrderNo { get; set; } = null!;
         public DateTimeOffset OrderedAt { get; set; }
         public PaymentStatus PaymentStatus { get; set; }

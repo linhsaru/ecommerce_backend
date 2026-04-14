@@ -97,7 +97,7 @@ namespace Application.Services
                             DiscountAmount = 0,
                             ShippingAmount = 0,
                             TotalAmount = totalAmount,
-                            ShipRecipient = "Customer",
+                            ShipRecipient = request.RecipientName ?? "Khách hàng",
                             ShipPhone = request.PhoneNumber,
                             ShipLine1 = request.ShippingAddress,
                             ShipWard = request.Ward,
@@ -175,7 +175,9 @@ namespace Application.Services
                 await _emailService.SendOrderConfirmationAsync(new OrderConfirmationEmailRequest
                 {
                     RecipientEmail = targetEmail,
-                    RecipientName = user?.FullName,
+                    RecipientName = user?.FullName != null ? user?.FullName : order.ShipRecipient,
+                    ReciptientAddress = order?.ShipLine1,
+                    PhoneNumber = order?.ShipPhone,
                     OrderNo = order.OrderNo,
                     OrderedAt = order.CreatedAt,
                     PaymentStatus = order.PaymentStatus,

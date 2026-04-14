@@ -11,6 +11,7 @@ namespace Application.DTOs.Orders
     {
         public Guid? UserId { get; set; }
         public string RecipientEmail { get; set; } = null!;
+        public string? RecipientName { get; set; }
         public string ShippingAddress { get; set; } = null!;
         public string PhoneNumber { get; set; } = null!;
         public string? Ward { get; set; }
