@@ -28,9 +28,6 @@ public interface IAppDbContext
     DbSet<Payment> Payments { get; }
     DbSet<Shipment> Shipments { get; }
 
-    DbSet<Promotion> Promotions { get; }
-    DbSet<PromotionProduct> PromotionProducts { get; }
-
     DbSet<Role> Roles { get; }
     DbSet<Component> Components { get; }
 

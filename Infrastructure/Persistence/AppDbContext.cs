@@ -39,9 +39,6 @@ public class AppDbContext : DbContext, IAppDbContext
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Shipment> Shipments => Set<Shipment>();
 
-    public DbSet<Promotion> Promotions => Set<Promotion>();
-    public DbSet<PromotionProduct> PromotionProducts => Set<PromotionProduct>();
-
     public DbSet<Role> Roles => Set<Role>();
     public DbSet<Component> Components => Set<Component>();
 

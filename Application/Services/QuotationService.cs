@@ -19,7 +19,7 @@ public sealed class QuotationService : IQuotationService
         AddressLine1 = "Xóm Châu Nhân 2, xã Lam Thành, tỉnh Nghệ An",
         AddressLine2 = "Khối 8, Phường Trường Vinh, tỉnh Nghệ An",
         Hotline = "098 137 2813",
-        Email = "contact.linhhiep@gmail.com",
+        Email = "lhcomputer.work@gmail.com",
         Website = "www.linhiepcomputer.vn"
     };
 

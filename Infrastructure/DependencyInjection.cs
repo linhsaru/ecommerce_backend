@@ -101,7 +101,6 @@ public static class DependencyInjection
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<IBrandService, BrandService>();
-        services.AddScoped<IPromotionService, PromotionService>();
         services.AddScoped<IInventoryService, InventoryService>();
         services.AddScoped<ICouponService, CouponService>();
         services.AddScoped<IPaymentService, PaymentService>();
@@ -120,7 +119,6 @@ public static class DependencyInjection
         services.AddScoped<ICategoryRepository, CategoryRepository>();
         services.AddScoped<ICartRepository, CartRepository>();
         services.AddScoped<IInventoryRepository, InventoryRepository>();
-        services.AddScoped<IPromotionRepository, PromotionRepository>();
         services.AddScoped<ICouponRepository, CouponRepository>();
         services.AddScoped<IRoleRepository, RoleRepository>();
         services.AddScoped<IBrandRepository, BrandRepository>();
