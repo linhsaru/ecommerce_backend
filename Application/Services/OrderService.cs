@@ -89,7 +89,7 @@ namespace Application.Services
                         var order = new Order
                         {
                             Id = Guid.NewGuid(),
-                            OrderNo = $"ORD-{DateTime.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}",
+                            OrderNo = $"ORD{DateTime.UtcNow:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}",
                             UserId = request.UserId,
                             Status = OrderStatus.pending,
                             PaymentStatus = PaymentStatus.unpaid,
@@ -141,7 +141,8 @@ namespace Application.Services
                     },
                     r => r.IsSuccess);
 
-                if (createResult.IsSuccess)
+                // Send immediate confirmation only for COD.
+                if (createResult.IsSuccess && request.PaymentMethod == PaymentMethod.cod)
                 {
                     await TrySendOrderConfirmationEmailAsync(createResult.Value!, request.UserId, request.RecipientEmail);
                 }

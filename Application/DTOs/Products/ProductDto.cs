@@ -19,6 +19,9 @@ public class ProductDto
     public decimal? OriginalPrice { get; init; }
     public decimal? DiscountedPrice { get; init; }
     public decimal? DiscountPercent { get; init; }
+    public Guid? PrimaryVariantId { get; init; }
+    public int StockCount { get; init; }
+    public bool InStock { get; init; }
 
     public IEnumerable<ProductImageDto>? imageProduct { get; init; }
     public DateTimeOffset CreatedAt { get; init; }

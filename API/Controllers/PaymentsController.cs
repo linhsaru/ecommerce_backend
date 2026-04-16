@@ -10,7 +10,6 @@ namespace API.Controllers;
 
 [ApiController]
 [Route("payments/vnpay")]
-[Route("api/payment/vnpay")]
 public class PaymentsController : BaseApiController
 {
     private readonly IPaymentService _paymentService;

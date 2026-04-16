@@ -10,18 +10,20 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Application.Services;
 
-/// <summary>
-/// Service CRUD san pham: phan trang, tim theo slug/id, tao/cap nhat/xoa.
-/// </summary>
 public sealed class ProductService : IProductService
 {
     private readonly IProductRepository _productRepo;
     private readonly ICategoryRepository _categoryRepo;
+    private readonly IInventoryRepository _inventoryRepo;
 
-    public ProductService(IProductRepository productRepo, ICategoryRepository categoryRepo)
+    public ProductService(
+        IProductRepository productRepo,
+        ICategoryRepository categoryRepo,
+        IInventoryRepository inventoryRepo)
     {
         _productRepo = productRepo;
         _categoryRepo = categoryRepo;
+        _inventoryRepo = inventoryRepo;
     }
 
     public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid>? categoryId, string? categorySlug, CancellationToken cancellationToken = default)
@@ -58,12 +60,13 @@ public sealed class ProductService : IProductService
         }
 
         var total = await query.LongCountAsync(cancellationToken);
-        var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);
-        var items = await query
+        var normalizedPageSize = Math.Clamp(pageSize, 1, 100);
+        var skip = (Math.Max(1, page) - 1) * normalizedPageSize;
+        var pagedRows = await query
             .OrderBy(p => p.Id)
             .Skip((int)skip)
-            .Take(Math.Clamp(pageSize, 1, 100))
-            .Select(p => new ProductDto
+            .Take(normalizedPageSize)
+            .Select(p => new
             {
                 Id = p.Id,
                 BrandId = p.BrandId,
@@ -73,6 +76,11 @@ public sealed class ProductService : IProductService
                 Description = p.Description,
                 Status = p.Status,
                 ThumbnailUrl = p.ThumbnailUrl,
+                PrimaryVariantId = p.ProductVariants
+                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                    .OrderBy(v => v.Price)
+                    .Select(v => (Guid?)v.Id)
+                    .FirstOrDefault(),
                 // Gia goc (uu tien CompareAt, neu null thi dung Price)
                 OriginalPrice = p.ProductVariants
                     .Where(v => v.DeletedAt == null && v.Status == 1)
@@ -109,6 +117,49 @@ public sealed class ProductService : IProductService
                 UpdatedAt = p.UpdatedAt
             })
             .ToListAsync(cancellationToken);
+
+        var primaryVariantIds = pagedRows
+            .Select(x => x.PrimaryVariantId)
+            .Where(x => x.HasValue)
+            .Select(x => x!.Value)
+            .Distinct()
+            .ToList();
+
+        var stockByVariant = primaryVariantIds.Count == 0
+            ? new Dictionary<Guid, int>()
+            : await _inventoryRepo.GetQueryable()
+                .Where(i => primaryVariantIds.Contains(i.VariantId))
+                .GroupBy(i => i.VariantId)
+                .Select(g => new { VariantId = g.Key, StockCount = g.Sum(i => i.Quantity) })
+                .ToDictionaryAsync(x => x.VariantId, x => x.StockCount, cancellationToken);
+
+        var items = pagedRows.Select(row =>
+        {
+            var stockCount = row.PrimaryVariantId.HasValue && stockByVariant.TryGetValue(row.PrimaryVariantId.Value, out var count)
+                ? count
+                : 0;
+
+            return new ProductDto
+            {
+                Id = row.Id,
+                BrandId = row.BrandId,
+                BrandName = row.BrandName,
+                Name = row.Name,
+                Slug = row.Slug,
+                Description = row.Description,
+                Status = row.Status,
+                ThumbnailUrl = row.ThumbnailUrl,
+                OriginalPrice = row.OriginalPrice,
+                DiscountedPrice = row.DiscountedPrice,
+                DiscountPercent = row.DiscountPercent,
+                PrimaryVariantId = row.PrimaryVariantId,
+                StockCount = stockCount,
+                InStock = row.Status == 1 && stockCount > 0,
+                imageProduct = row.imageProduct,
+                CreatedAt = row.CreatedAt,
+                UpdatedAt = row.UpdatedAt
+            };
+        }).ToList();
 
         return Result<(List<ProductDto> Items, long Total)>.Ok((items, total));
     }
@@ -163,7 +214,8 @@ public sealed class ProductService : IProductService
         if (product == null)
             return Result<ProductDetailDto?>.Fail("NOT_FOUND", "Product not found.");
 
-        return Result<ProductDetailDto?>.Ok(MapToDetail(product));
+        var dto = await MapToDetailAsync(product, cancellationToken);
+        return Result<ProductDetailDto?>.Ok(dto);
     }
 
     public async Task<Result<ProductDetailDto?>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
@@ -173,7 +225,8 @@ public sealed class ProductService : IProductService
         if (product == null)
             return Result<ProductDetailDto?>.Fail("NOT_FOUND", "Product not found.");
 
-        return Result<ProductDetailDto?>.Ok(MapToDetail(product));
+        var dto = await MapToDetailAsync(product, cancellationToken);
+        return Result<ProductDetailDto?>.Ok(dto);
     }
 
     public async Task<Result<List<ProductVariantDto>>> GetVariantsByProductIdAsync(Guid productId, CancellationToken cancellationToken = default)
@@ -182,7 +235,11 @@ public sealed class ProductService : IProductService
             return Result<List<ProductVariantDto>>.Fail("NOT_FOUND", "Product not found.");
 
         var variants = await _productRepo.GetVariantsByProductIdAsync(productId, cancellationToken);
-        var dtos = variants.Select(MapVariantToDto).ToList();
+        var dtos = new List<ProductVariantDto>();
+        foreach (var variant in variants)
+        {
+            dtos.Add(await MapVariantToDtoAsync(variant, cancellationToken));
+        }
         return Result<List<ProductVariantDto>>.Ok(dtos);
     }
 
@@ -334,6 +391,9 @@ public sealed class ProductService : IProductService
             OriginalPrice = originalPrice,
             DiscountedPrice = discountedPrice,
             DiscountPercent = discountPercent,
+            PrimaryVariantId = first?.Id,
+            StockCount = 0,
+            InStock = p.Status == 1 && first != null,
             imageProduct = (p.ProductImages ?? Enumerable.Empty<ProductImage>())
                 .OrderBy(img => img.SortOrder)
                 .Select(img => new ProductImageDto
@@ -348,9 +408,9 @@ public sealed class ProductService : IProductService
         };
     }
 
-    private static ProductDetailDto MapToDetail(Product p)
+    private async Task<ProductDetailDto> MapToDetailAsync(Product p, CancellationToken cancellationToken = default)
     {
-        var activeVariants = p.ProductVariants
+        var activeVariants = (p.ProductVariants ?? Enumerable.Empty<ProductVariant>())
             .Where(v => v.DeletedAt == null && v.Status == 1)
             .OrderBy(v => v.Price)
             .ToList();
@@ -362,6 +422,12 @@ public sealed class ProductService : IProductService
         if (originalPrice.HasValue && originalPrice.Value > 0 && discountedPrice.HasValue && discountedPrice.Value < originalPrice.Value)
         {
             discountPercent = (originalPrice.Value - discountedPrice.Value) / originalPrice.Value * 100;
+        }
+
+        var variantDtos = new List<ProductVariantDto>();
+        foreach (var variant in p.ProductVariants ?? Enumerable.Empty<ProductVariant>())
+        {
+            variantDtos.Add(await MapVariantToDtoAsync(variant, cancellationToken));
         }
 
         return new ProductDetailDto
@@ -392,25 +458,30 @@ public sealed class ProductService : IProductService
                 Alt = pi.Alt,
                 SortOrder = pi.SortOrder
             }).ToList(),
-            Variants = p.ProductVariants.Select(MapVariantToDto).ToList()
+            Variants = variantDtos
         };
     }
 
-    private static ProductVariantDto MapVariantToDto(ProductVariant v) => new()
+    private async Task<ProductVariantDto> MapVariantToDtoAsync(ProductVariant v, CancellationToken cancellationToken = default)
     {
-        Id = v.Id,
-        Sku = v.Sku,
-        VariantName = v.VariantName,
-        Price = v.Price,
-        CompareAt = v.CompareAt,
-        Cost = v.Cost,
-        Status = v.Status,
-        Specifications = v.ProductVariantSpecifications
-            .Select(s => new SpecificationItemDto
-            {
-                Name = s.SpecificationType.Name,
-                Unit = s.SpecificationType.Unit,
-                Value = s.Value
-            }).ToList()
-    };
+        var stockCount = await _inventoryRepo.GetTotalStockAsync(v.Id, cancellationToken);
+        return new ProductVariantDto
+        {
+            Id = v.Id,
+            Sku = v.Sku,
+            VariantName = v.VariantName,
+            Price = v.Price,
+            CompareAt = v.CompareAt,
+            Cost = v.Cost,
+            Status = v.Status,
+            StockCount = stockCount,
+            Specifications = v.ProductVariantSpecifications
+                .Select(s => new SpecificationItemDto
+                {
+                    Name = s.SpecificationType.Name,
+                    Unit = s.SpecificationType.Unit,
+                    Value = s.Value
+                }).ToList()
+        };
+    }
 }

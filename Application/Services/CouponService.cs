@@ -59,7 +59,11 @@ public sealed class CouponService : ICouponService
 
     public async Task<Result<CouponDto?>> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
     {
-        var c = await _repo.GetByCodeAsync(code, cancellationToken);
+        var normalizedCode = NormalizeCode(code);
+        if (string.IsNullOrWhiteSpace(normalizedCode))
+            return Result<CouponDto?>.Fail("VALIDATION_ERROR", "Coupon code is required.");
+
+        var c = await _repo.GetByCodeAsync(normalizedCode, cancellationToken);
         if (c == null)
             return Result<CouponDto?>.Fail("NOT_FOUND", "Coupon not found.");
         return Result<CouponDto?>.Ok(Map(c));
@@ -67,14 +71,18 @@ public sealed class CouponService : ICouponService
 
     public async Task<Result<CouponDto>> CreateAsync(CreateCouponRequest request, CancellationToken cancellationToken = default)
     {
-        if (await _repo.ExistsByCodeAsync(request.Code, null, cancellationToken))
+        var normalizedCode = NormalizeCode(request.Code);
+        if (string.IsNullOrWhiteSpace(normalizedCode))
+            return Result<CouponDto>.Fail("VALIDATION_ERROR", "Coupon code is required.");
+
+        if (await _repo.ExistsByCodeAsync(normalizedCode, null, cancellationToken))
             return Result<CouponDto>.Fail("VALIDATION_ERROR", "Coupon code already exists.");
 
         var now = DateTimeOffset.UtcNow;
         var coupon = new Coupon
         {
             Id = Guid.NewGuid(),
-            Code = request.Code,
+            Code = normalizedCode,
             Name = request.Name,
             DiscountType = request.DiscountType,
             DiscountValue = request.DiscountValue,
@@ -101,9 +109,13 @@ public sealed class CouponService : ICouponService
 
         if (request.Code != null)
         {
-            if (await _repo.ExistsByCodeAsync(request.Code, id, cancellationToken))
+            var normalizedCode = NormalizeCode(request.Code);
+            if (string.IsNullOrWhiteSpace(normalizedCode))
+                return Result<CouponDto>.Fail("VALIDATION_ERROR", "Coupon code is required.");
+
+            if (await _repo.ExistsByCodeAsync(normalizedCode, id, cancellationToken))
                 return Result<CouponDto>.Fail("VALIDATION_ERROR", "Coupon code already exists.");
-            c.Code = request.Code;
+            c.Code = normalizedCode;
         }
         if (request.Name != null) c.Name = request.Name;
         if (request.DiscountType != null) c.DiscountType = request.DiscountType;
@@ -148,4 +160,7 @@ public sealed class CouponService : ICouponService
         CreatedAt = c.CreatedAt,
         UpdatedAt = c.UpdatedAt
     };
+
+    private static string NormalizeCode(string code)
+        => (code ?? string.Empty).Trim().ToUpperInvariant();
 }

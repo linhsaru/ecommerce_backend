@@ -17,13 +17,32 @@ public class CouponRepository : ICouponRepository
         => await _db.Coupons.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
     public async Task<Coupon?> GetByCodeAsync(string code, CancellationToken cancellationToken = default)
-        => await _db.Coupons.FirstOrDefaultAsync(c => c.Code == code, cancellationToken);
+    {
+        var normalizedCode = NormalizeCode(code);
+        if (string.IsNullOrEmpty(normalizedCode))
+            return null;
+
+        return await _db.Coupons
+            .FirstOrDefaultAsync(c => c.Code.Trim().ToUpper() == normalizedCode, cancellationToken);
+    }
 
     public async Task<bool> ExistsByCodeAsync(string code, Guid? excludeId = null, CancellationToken cancellationToken = default)
-        => await _db.Coupons.AnyAsync(c => c.Code == code && (excludeId == null || c.Id != excludeId.Value), cancellationToken);
+    {
+        var normalizedCode = NormalizeCode(code);
+        if (string.IsNullOrEmpty(normalizedCode))
+            return false;
+
+        return await _db.Coupons.AnyAsync(
+            c => c.Code.Trim().ToUpper() == normalizedCode && (excludeId == null || c.Id != excludeId.Value),
+            cancellationToken
+        );
+    }
 
     public void Add(Coupon coupon) => _db.Coupons.Add(coupon);
     public void Update(Coupon coupon) => _db.Coupons.Update(coupon);
     public void Remove(Coupon coupon) => _db.Coupons.Remove(coupon);
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => _db.SaveChangesAsync(cancellationToken);
+
+    private static string NormalizeCode(string code)
+        => (code ?? string.Empty).Trim().ToUpperInvariant();
 }

@@ -2,16 +2,10 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Application.DTOs.Payments;
 
-public sealed class CreateVnPayPaymentRequest
+public sealed class CreateVietQrPaymentRequest
 {
     [Required]
     public Guid OrderId { get; set; }
-
-    [MaxLength(250)]
-    public string? OrderDescription { get; set; }
-
-    [MaxLength(500)]
-    public string? ReturnUrl { get; set; }
 
     [EmailAddress]
     [MaxLength(255)]
