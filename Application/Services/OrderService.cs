@@ -307,17 +307,22 @@ namespace Application.Services
             }
         }
 
-        public async Task<Result<List<AdminOrderResponse>>> GetAllOrdersAsync()
+        public async Task<Result<(List<AdminOrderResponse> Items, long Total)>> GetOrdersPagedAsync(
+            int page,
+            int pageSize,
+            string? search,
+            int? status,
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                var orders = await _repo.GetAllOrdersAsync();
+                var (orders, total) = await _repo.GetOrdersPagedAsync(page, pageSize, search, status, cancellationToken);
                 var response = orders.Select(MapAdminOrder).ToList();
-                return Result<List<AdminOrderResponse>>.Ok(response);
+                return Result<(List<AdminOrderResponse> Items, long Total)>.Ok((response, total));
             }
             catch (Exception ex)
             {
-                return Result<List<AdminOrderResponse>>.Fail("ORDER_LIST_FAILED", "Lấy danh sách đơn hàng thất bại.", ex.Message);
+                return Result<(List<AdminOrderResponse> Items, long Total)>.Fail("ORDER_LIST_FAILED", "Lấy danh sách đơn hàng thất bại.", ex.Message);
             }
         }
 

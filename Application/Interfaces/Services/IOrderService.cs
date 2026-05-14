@@ -12,7 +12,7 @@ namespace Application.Interfaces.Services
     {
         Task<Result<CreateOrderResponse>> CreateOrderAsync(CreateOrderRequest request);
         Task<Result<List<MyOrderResponse>>> GetMyOrdersAsync(Guid userId);
-        Task<Result<List<AdminOrderResponse>>> GetAllOrdersAsync();
+        Task<Result<(List<AdminOrderResponse> Items, long Total)>> GetOrdersPagedAsync(int page, int pageSize, string? search, int? status, CancellationToken cancellationToken = default);
         Task<Result<AdminOrderResponse>> UpdateOrderStatusesAsync(Guid orderId, UpdateOrderStatusesRequest request);
         Task<Result<OrderLookupResponse>> GetOrderByOrderNoAsync(string orderNo);
     }

@@ -60,12 +60,21 @@ public class OrdersController : BaseApiController
 
     [HttpGet]
     [Authorize(Roles = nameof(UserRole.RoleAdmin))]
-    [ProducesResponseType(typeof(ApiResponse<List<AdminOrderResponse>>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<PagedResponse<AdminOrderResponse>>), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetAllOrders()
+    public async Task<IActionResult> GetAllOrders(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? search = null,
+        [FromQuery] int? status = null,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _orderService.GetAllOrdersAsync();
-        return result.ToActionResult(this);
+        var result = await _orderService.GetOrdersPagedAsync(page, pageSize, search, status, cancellationToken);
+        if (result.IsFailure)
+            return result.ToActionResult(this);
+        var (items, total) = result.Value!;
+        var response = PagedResponse<AdminOrderResponse>.Create(items, page, pageSize, total);
+        return Ok(ApiResponse<PagedResponse<AdminOrderResponse>>.Ok(response, traceId: HttpContext.TraceIdentifier));
     }
 
     [HttpPut("{id:guid}/status")]

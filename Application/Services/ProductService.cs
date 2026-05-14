@@ -26,7 +26,7 @@ public sealed class ProductService : IProductService
         _inventoryRepo = inventoryRepo;
     }
 
-    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid>? categoryId, string? categorySlug, CancellationToken cancellationToken = default)
+    public async Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid>? categoryId, string? categorySlug, bool? inStock = null, CancellationToken cancellationToken = default)
     {
         var query = _productRepo.GetQueryable();
 
@@ -57,6 +57,42 @@ public sealed class ProductService : IProductService
             var expandedCategoryIds = await ExpandCategoryIdsAsync(categoryId, cancellationToken);
             query = query.Where(p =>
                 p.ProductCategories.Any(pc => expandedCategoryIds.Contains(pc.CategoryId)));
+        }
+
+        if (inStock.HasValue)
+        {
+            var inventories = _inventoryRepo.GetQueryable();
+
+            if (inStock.Value)
+            {
+                query = query.Where(p =>
+                    p.Status == 1
+                    && ((inventories
+                        .Where(i =>
+                            i.VariantId ==
+                            p.ProductVariants
+                                .Where(v => v.DeletedAt == null && v.Status == 1)
+                                .OrderBy(v => v.Price)
+                                .Select(v => v.Id)
+                                .FirstOrDefault())
+                        .Sum(i => (int?)i.Quantity) ?? 0) > 0));
+            }
+            else
+            {
+                query = query.Where(p =>
+                    p.Status == 1
+                    && (
+                        !p.ProductVariants.Any(v => v.DeletedAt == null && v.Status == 1)
+                        || ((inventories
+                            .Where(i =>
+                                i.VariantId ==
+                                p.ProductVariants
+                                    .Where(v => v.DeletedAt == null && v.Status == 1)
+                                    .OrderBy(v => v.Price)
+                                    .Select(v => v.Id)
+                                    .FirstOrDefault())
+                            .Sum(i => (int?)i.Quantity) ?? 0) <= 0)));
+            }
         }
 
         var total = await query.LongCountAsync(cancellationToken);
@@ -334,6 +370,25 @@ public sealed class ProductService : IProductService
             var productCategories = request.CategoryIds.Select(
                 catId => new ProductCategory { ProductId = product.Id, CategoryId = catId }).ToList();
             _productRepo.AddProductCategories(productCategories);
+        }
+
+        if (request.VariantPricing != null)
+        {
+            var vp = request.VariantPricing;
+            if (vp.VariantId == Guid.Empty)
+                return Result<ProductDto>.Fail("VALIDATION_ERROR", "Thiếu mã biến thể khi cập nhật giá.");
+
+            if (vp.Price < 0)
+                return Result<ProductDto>.Fail("VALIDATION_ERROR", "Giá bán không hợp lệ.");
+
+            var variant = product.ProductVariants.FirstOrDefault(v => v.Id == vp.VariantId && v.DeletedAt == null);
+            if (variant == null)
+                return Result<ProductDto>.Fail("VALIDATION_ERROR", "Biến thể không tồn tại.");
+
+            variant.Price = vp.Price;
+            variant.CompareAt = vp.CompareAt;
+            variant.Cost = vp.Cost;
+            variant.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
         product.UpdatedAt = DateTimeOffset.UtcNow;

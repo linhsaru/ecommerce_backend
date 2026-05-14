@@ -21,7 +21,15 @@ public sealed class ChatService : IChatService
     private const string ProductsCacheKey = "botchat:products:v2";
     private const string SearchStateKeyPrefix = "botchat:searchstate:v1";
     private const int MaxToolRounds = 8;
+    private const decimal BudgetToleranceRatio = 0.12m;
     private static readonly string[] SearchDatasetSuffixes = ["laptop", "pc", "all"];
+    private static readonly HashSet<string> SearchStopWords = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "toi", "toi", "minh", "ban", "giup", "hay", "goi", "goi y", "tu van", "cho", "toi", "nhe",
+        "can", "muon", "tim", "kiem", "san", "pham", "cau", "hinh", "may", "tinh", "duoc", "voi",
+        "la", "nhu", "cau", "va", "hoac", "de", "phuc", "vu", "tam", "gia", "khoang", "duoi", "tren",
+        "pc", "build", "mot", "nhung", "nhung", "giup", "them"
+    };
     private static readonly string[] PcCategorySlugs =
     [
         "linh-kien-may-tinh",
@@ -363,7 +371,18 @@ public sealed class ChatService : IChatService
         int VariantCount,
         decimal? MinPrice,
         decimal? MaxPrice,
-        List<string> Specs);
+        decimal? RepresentativePrice,
+        List<string> Specs,
+        string SearchText);
+    private readonly record struct SearchIntent(
+        bool LaptopPreferred,
+        bool PcPreferred,
+        bool GamingPreferred,
+        bool OfficePreferred);
+    private readonly record struct BudgetHint(
+        decimal? Min,
+        decimal? Max,
+        decimal? Target);
     private sealed record SearchState(
         string DatasetKey,
         string QueryHash,
@@ -414,8 +433,13 @@ public sealed class ChatService : IChatService
                 .Where(s => s.SpecificationType != null && !string.IsNullOrWhiteSpace(s.Value))
                 .Select(s => $"{s.SpecificationType.Name}{(string.IsNullOrWhiteSpace(s.SpecificationType.Unit) ? "" : $" ({s.SpecificationType.Unit})")}: {s.Value}")
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(30)
+                .Take(12)
                 .ToList();
+            var representativePrice = minPrice is not null && maxPrice is not null
+                ? Math.Round((minPrice.Value + maxPrice.Value) / 2m, 0)
+                : minPrice ?? maxPrice;
+            var searchText = NormalizeForSearch(
+                $"{p.Name} {p.Brand?.Name} {string.Join(" ", categories)} {p.Description} {string.Join(" ", specs)}");
             return new ProductIndexItem(
                 p.Name,
                 p.Slug,
@@ -426,7 +450,9 @@ public sealed class ChatService : IChatService
                 variantCount,
                 minPrice,
                 maxPrice,
-                specs);
+                representativePrice,
+                specs,
+                searchText);
         }).ToList();
         var expiryMinutes = 60;
         if (int.TryParse(_configuration["BotChat:ProductsCacheExpiryMinutes"], out var minutes) && minutes > 0)
@@ -446,11 +472,11 @@ public sealed class ChatService : IChatService
     }
     private int ResolvePageSize(int? requested)
     {
-        var defaultSize = 80;
+        var defaultSize = 24;
         if (int.TryParse(_configuration["BotChat:SearchPageSize"], out var cfg) && cfg > 0) defaultSize = cfg;
         var size = requested ?? defaultSize;
-        if (size < 20) size = 20;
-        if (size > 200) size = 200;
+        if (size < 10) size = 10;
+        if (size > 80) size = 80;
         return size;
     }
     private int ResolveSessionExpiryMinutes()
@@ -478,41 +504,80 @@ public sealed class ChatService : IChatService
             if (p.MinPrice is not null || p.MaxPrice is not null)
                 sb.Append($" | Giá: {p.MinPrice?.ToString() ?? "?"} - {p.MaxPrice?.ToString() ?? "?"}");
             if (p.Specs is { Count: > 0 })
-                sb.Append($" | Thông số: {string.Join("; ", p.Specs)}");
+                sb.Append($" | Thông số: {string.Join("; ", p.Specs.Take(6).Select(TrimForSnippet))}");
             sb.AppendLine();
         }
         return sb.ToString().Trim();
     }
-    private static (decimal? Min, decimal? Max) ExtractPriceRangeVnd(string message)
+    private static string TrimForSnippet(string? value, int maxLength = 80)
     {
-        var text = (message ?? "").ToLowerInvariant();
+        var text = (value ?? "").Trim();
+        if (text.Length <= maxLength) return text;
+        return $"{text[..maxLength].TrimEnd()}...";
+    }
+    private static BudgetHint ExtractBudgetHintVnd(string message)
+    {
+        var text = NormalizeForSearch(message);
+        var hasBudgetCue = text.Contains("gia") ||
+                           text.Contains("ngan sach") ||
+                           text.Contains("duoi") ||
+                           text.Contains("tren") ||
+                           text.Contains("tam") ||
+                           text.Contains("khoang") ||
+                           text.Contains("budget");
         static decimal ToVnd(decimal n, string unit)
         {
             unit = unit.ToLowerInvariant();
+            if (string.IsNullOrWhiteSpace(unit)) return n;
             if (unit.Contains("triệu") || unit.Contains("trieu")) return n * 1_000_000m;
+            if (unit == "tr" || unit == "m") return n * 1_000_000m;
+            if (unit.Contains("củ") || unit.Contains("cu")) return n * 1_000_000m;
             if (unit.Contains("k") || unit.Contains("nghìn") || unit.Contains("nghin")) return n * 1_000m;
             return n;
         }
-        var under = Regex.Match(text, @"(dưới|duoi)\s*(\d+(?:[.,]\d+)?)\s*(triệu|trieu|k|nghìn|nghin)?");
+        var under = Regex.Match(text, @"(duoi|<=|toi da|max)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|m|cu|k|nghin)?");
         if (under.Success)
         {
             var n = decimal.Parse(under.Groups[2].Value.Replace(',', '.'), CultureInfo.InvariantCulture);
-            var unit = under.Groups[3].Success ? under.Groups[3].Value : "triệu";
-            return (null, ToVnd(n, unit));
+            var unit = under.Groups[3].Success ? under.Groups[3].Value : "trieu";
+            return new BudgetHint(null, ToVnd(n, unit), ToVnd(n, unit));
         }
-        var between = Regex.Match(text, @"(\d+(?:[.,]\d+)?)\s*(?:-|đến|den)\s*(\d+(?:[.,]\d+)?)\s*(triệu|trieu|k|nghìn|nghin)?");
+        var over = Regex.Match(text, @"(tren|>=|tu)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|m|cu|k|nghin)?");
+        if (over.Success)
+        {
+            var n = decimal.Parse(over.Groups[2].Value.Replace(',', '.'), CultureInfo.InvariantCulture);
+            var unit = over.Groups[3].Success ? over.Groups[3].Value : "trieu";
+            var min = ToVnd(n, unit);
+            return new BudgetHint(min, null, min);
+        }
+        var between = Regex.Match(text, @"(\d+(?:[.,]\d+)?)\s*(?:-|den|to)\s*(\d+(?:[.,]\d+)?)\s*(trieu|tr|m|cu|k|nghin)?");
         if (between.Success)
         {
             var a = decimal.Parse(between.Groups[1].Value.Replace(',', '.'), CultureInfo.InvariantCulture);
             var b = decimal.Parse(between.Groups[2].Value.Replace(',', '.'), CultureInfo.InvariantCulture);
-            var unit = between.Groups[3].Success ? between.Groups[3].Value : "triệu";
+            var unit = between.Groups[3].Success ? between.Groups[3].Value : "trieu";
             var min = ToVnd(Math.Min(a, b), unit);
             var max = ToVnd(Math.Max(a, b), unit);
-            return (min, max);
+            return new BudgetHint(min, max, Math.Round((min + max) / 2m, 0));
         }
-        return (null, null);
+        if (hasBudgetCue)
+        {
+            var single = Regex.Match(text, @"(\d+(?:[.,]\d+)?)\s*(trieu|tr|m|cu|k|nghin)?");
+            if (single.Success)
+            {
+                var n = decimal.Parse(single.Groups[1].Value.Replace(',', '.'), CultureInfo.InvariantCulture);
+                var unit = single.Groups[2].Success ? single.Groups[2].Value : (n <= 300 ? "trieu" : "");
+                var target = ToVnd(n, unit);
+                if (target > 0)
+                {
+                    var delta = Math.Round(target * 0.15m, 0);
+                    return new BudgetHint(Math.Max(0, target - delta), target + delta, target);
+                }
+            }
+        }
+        return new BudgetHint(null, null, null);
     }
-    private static (decimal? Min, decimal? Max) MergePriceRange((decimal? Min, decimal? Max) fromText, decimal? toolMaxVnd)
+    private static BudgetHint MergeBudgetHint(BudgetHint fromText, decimal? toolMaxVnd)
     {
         if (toolMaxVnd is null || toolMaxVnd <= 0)
             return fromText;
@@ -521,30 +586,104 @@ public sealed class ChatService : IChatService
         var min = fromText.Min;
         if (min is not null && max < min)
             max = cap;
-        return (min, max);
+        var target = fromText.Target is null ? cap : Math.Min(fromText.Target.Value, cap);
+        return new BudgetHint(min, max, target);
     }
-    private static int ScoreProduct(ProductIndexItem p, HashSet<string> tokens, (decimal? Min, decimal? Max) price)
+    private static SearchIntent DetectSearchIntent(string message, string datasetKey)
+    {
+        var text = NormalizeForSearch(message);
+        var laptopPreferred = datasetKey == "laptop" || text.Contains("laptop");
+        var pcPreferred = datasetKey == "pc" || text.Contains("pc") || text.Contains("cau hinh");
+        var gamingPreferred = text.Contains("gaming") || text.Contains("choi game") || text.Contains("fps");
+        var officePreferred = text.Contains("van phong") || text.Contains("hoc tap") || text.Contains("office");
+        return new SearchIntent(laptopPreferred, pcPreferred, gamingPreferred, officePreferred);
+    }
+    private static bool IsBudgetCompatible(ProductIndexItem p, BudgetHint budget)
+    {
+        if (budget.Min is null && budget.Max is null) return true;
+        var min = p.MinPrice ?? p.MaxPrice ?? p.RepresentativePrice;
+        var max = p.MaxPrice ?? p.MinPrice ?? p.RepresentativePrice;
+        if (min is null || max is null) return true;
+        var minAllowed = budget.Min is null ? 0 : budget.Min.Value * (1m - BudgetToleranceRatio);
+        var maxAllowed = budget.Max is null ? decimal.MaxValue : budget.Max.Value * (1m + BudgetToleranceRatio);
+        return !(max < minAllowed || min > maxAllowed);
+    }
+    private static string NormalizeForSearch(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+        var normalized = text.Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(normalized.Length);
+        foreach (var c in normalized)
+        {
+            var uc = CharUnicodeInfo.GetUnicodeCategory(c);
+            if (uc != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        }
+        var noDiacritics = sb.ToString().Normalize(NormalizationForm.FormC);
+        return Regex.Replace(noDiacritics.ToLowerInvariant(), @"\s+", " ").Trim();
+    }
+    private static HashSet<string> TokenizeForSearch(string? text)
+    {
+        return NormalizeForSearch(text)
+            .Split(new[] { ' ', '\t', '\r', '\n', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '/', '\\', '-', '_', '+' }, StringSplitOptions.RemoveEmptyEntries)
+            .Where(t => t.Length >= 2)
+            .Where(t => !SearchStopWords.Contains(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(40)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+    private static int ScoreProduct(ProductIndexItem p, HashSet<string> tokens, BudgetHint budget, SearchIntent intent)
     {
         var score = 0;
-        var nameLower = p.Name.ToLowerInvariant();
-        var brandLower = (p.BrandName ?? "").ToLowerInvariant();
+        var nameLower = NormalizeForSearch(p.Name);
+        var brandLower = NormalizeForSearch(p.BrandName);
+        var searchText = p.SearchText;
+        var tokenHits = 0;
         foreach (var t in tokens)
         {
             if (t.Length < 2) continue;
-            if (nameLower.Contains(t)) score += 8;
-            if (!string.IsNullOrWhiteSpace(brandLower) && brandLower.Contains(t)) score += 10;
-            if (p.CategorySlugs.Any(c => c.ToLowerInvariant().Contains(t))) score += 4;
-        }
-        if (price.Min is not null || price.Max is not null)
-        {
-            var min = p.MinPrice ?? p.MaxPrice;
-            var max = p.MaxPrice ?? p.MinPrice;
-            if (min is not null && max is not null)
+            if (nameLower.Contains(t))
             {
-                var ok = true;
-                if (price.Min is not null && max < price.Min) ok = false;
-                if (price.Max is not null && min > price.Max) ok = false;
-                score += ok ? 6 : -3;
+                score += 12;
+                tokenHits++;
+            }
+            if (!string.IsNullOrWhiteSpace(brandLower) && brandLower.Contains(t))
+            {
+                score += 9;
+                tokenHits++;
+            }
+            if (searchText.Contains(t))
+            {
+                score += 4;
+                tokenHits++;
+            }
+            if (p.CategorySlugs.Any(c => NormalizeForSearch(c).Contains(t)))
+                score += 6;
+        }
+        if (tokenHits > 1)
+            score += Math.Min(tokenHits * 2, 12);
+        if (intent.LaptopPreferred)
+            score += p.CategorySlugs.Any(c => c.Equals(LaptopCategorySlug, StringComparison.OrdinalIgnoreCase)) ? 14 : -8;
+        if (intent.PcPreferred)
+            score += p.CategorySlugs.Any(c => PcCategorySlugs.Contains(c, StringComparer.OrdinalIgnoreCase)) ? 8 : 0;
+        if (intent.GamingPreferred)
+            score += searchText.Contains("rtx") || searchText.Contains("fps") || searchText.Contains("gaming") ? 9 : 0;
+        if (intent.OfficePreferred)
+            score += searchText.Contains("office") || searchText.Contains("van phong") || searchText.Contains("tiet kiem dien") ? 6 : 0;
+        if (budget.Min is not null || budget.Max is not null || budget.Target is not null)
+        {
+            var rep = p.RepresentativePrice ?? p.MinPrice ?? p.MaxPrice;
+            if (rep is not null)
+            {
+                if (budget.Target is not null && budget.Target > 0)
+                {
+                    var diffRatio = Math.Abs(rep.Value - budget.Target.Value) / budget.Target.Value;
+                    score += Math.Max(0, (int)Math.Round(14 - diffRatio * 26));
+                }
+                if (budget.Max is not null && rep > budget.Max * (1m + BudgetToleranceRatio))
+                    score -= 10;
+                if (budget.Min is not null && rep < budget.Min * (1m - BudgetToleranceRatio))
+                    score -= 4;
             }
         }
         if (p.Status == 1) score += 1;
@@ -635,21 +774,38 @@ public sealed class ChatService : IChatService
             }
         }
         var fullDataset = await GetOrBuildFullDatasetAsync(dataset, cancellationToken);
-        var lower = (message ?? "").Trim().ToLowerInvariant();
-        var tokens = lower
-            .Split(new[] { ' ', '\t', '\r', '\n', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '/', '\\', '-', '_' }, StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => t.Length >= 2)
-            .Take(30)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var tokens = TokenizeForSearch(message);
         var safeMessage = message ?? "";
-        var price = MergePriceRange(ExtractPriceRangeVnd(safeMessage), toolBudgetMaxVnd);
+        var budget = MergeBudgetHint(ExtractBudgetHintVnd(safeMessage), toolBudgetMaxVnd);
+        var intent = DetectSearchIntent(safeMessage, datasetKey);
         var matched = fullDataset
-            .Select(p => new { p, score = ScoreProduct(p, tokens, price) })
+            .Where(p => IsBudgetCompatible(p, budget))
+            .Select(p => new { p, score = ScoreProduct(p, tokens, budget, intent) })
             .Where(x => x.score > 0)
             .OrderByDescending(x => x.score)
             .ThenBy(x => x.p.Name)
             .Select(x => x.p)
             .ToList();
+        // If dataset-specific filtering is too strict (e.g. slug mismatch), fallback to full catalog.
+        if (matched.Count == 0 && !datasetKey.Equals("all", StringComparison.OrdinalIgnoreCase))
+        {
+            var allDataset = new ProductsDataset("all", Array.Empty<string>());
+            var fullAll = await GetOrBuildFullDatasetAsync(allDataset, cancellationToken);
+            matched = fullAll
+                .Where(p => IsBudgetCompatible(p, budget))
+                .Select(p => new { p, score = ScoreProduct(p, tokens, budget, intent) })
+                .Where(x => x.score > 0)
+                .OrderByDescending(x => x.score)
+                .ThenBy(x => x.p.Name)
+                .Select(x => x.p)
+                .ToList();
+            if (matched.Count > 0)
+            {
+                dataset = allDataset;
+                datasetKey = allDataset.CacheKeySuffix;
+                stateKey = $"{SearchStateKeyPrefix}:{sid}:{datasetKey}";
+            }
+        }
         var matchedSlugs = matched.Select(x => x.Slug).ToList();
         var slice2 = matched.Take(pageSize).ToList();
         var hasMore2 = matched.Count > pageSize;
@@ -670,11 +826,11 @@ public sealed class ChatService : IChatService
         var text = (message ?? "").Trim();
         if (string.IsNullOrWhiteSpace(text))
             return new ProductsDataset("all", Array.Empty<string>());
-        var lower = text.ToLowerInvariant();
-        if (lower.Contains("laptop"))
+        var lower = NormalizeForSearch(text);
+        if (lower.Contains("laptop") || lower.Contains("notebook") || lower.Contains("ultrabook") || lower.Contains("may tinh xach tay"))
             return new ProductsDataset("laptop", [LaptopCategorySlug]);
-        if (lower.Contains("xây dựng cấu hình") ||
-            lower.Contains("cấu hình máy tính") ||
+        if (lower.Contains("xay dung cau hinh") ||
+            lower.Contains("cau hinh may tinh") ||
             lower.Contains("build pc") ||
             lower.Contains("pc"))
         {

@@ -1,11 +1,12 @@
 using Domain.Entities;
+using Domain.Enums;
 using Domain.Interfaces.Repositories;
 using Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Infrastructure.Repositories
@@ -37,13 +38,41 @@ namespace Infrastructure.Repositories
                 .ToListAsync();
         }
 
-        public async Task<List<Order>> GetAllOrdersAsync()
+        public async Task<(List<Order> Items, long Total)> GetOrdersPagedAsync(
+            int page,
+            int pageSize,
+            string? search,
+            int? status,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.Orders
+            var query = _context.Orders
+                .AsNoTracking()
                 .Include(o => o.OrderItems)
                 .Include(o => o.Shipments)
-                .OrderByDescending(o => o.CreatedAt)
-                .ToListAsync();
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim();
+                query = query.Where(o =>
+                    o.OrderNo.Contains(s) ||
+                    o.ShipRecipient.Contains(s) ||
+                    o.ShipPhone.Contains(s));
+            }
+
+            if (status.HasValue && Enum.IsDefined(typeof(OrderStatus), status.Value))
+                query = query.Where(o => o.Status == (OrderStatus)status.Value);
+
+            query = query.OrderByDescending(o => o.CreatedAt);
+
+            var total = await query.LongCountAsync(cancellationToken);
+            var skip = (Math.Max(1, page) - 1) * Math.Clamp(pageSize, 1, 100);
+            var items = await query
+                .Skip((int)skip)
+                .Take(Math.Clamp(pageSize, 1, 100))
+                .ToListAsync(cancellationToken);
+
+            return (items, total);
         }
 
         public async Task<Order?> GetOrderByIdAsync(Guid orderId)

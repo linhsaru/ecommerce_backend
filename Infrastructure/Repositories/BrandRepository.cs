@@ -19,7 +19,9 @@ namespace Infrastructure.Repositories
         public async Task<IEnumerable<Brand>> GetAllAsync()
         {
             return await _db.Brands
+                .AsNoTracking()
                 .Where(b => b.DeletedAt == null)
+                .OrderBy(b => b.Name)
                 .ToListAsync();
         }
 
