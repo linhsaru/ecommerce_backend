@@ -4,6 +4,7 @@ using Application.Interfaces.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Domain.Interfaces.Repositories;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -15,10 +16,20 @@ namespace Application.Services
     public class OrderService : IOrderService
     {
         private readonly IOrderRepository _repo;
+        private readonly IUserRepository _userRepository;
+        private readonly IEmailService _emailService;
+        private readonly ILogger<OrderService> _logger;
 
-        public OrderService(IOrderRepository repo)
+        public OrderService(
+            IOrderRepository repo,
+            IUserRepository userRepository,
+            IEmailService emailService,
+            ILogger<OrderService> logger)
         {
             _repo = repo;
+            _userRepository = userRepository;
+            _emailService = emailService;
+            _logger = logger;
         }
 
         public async Task<Result<CreateOrderResponse>> CreateOrderAsync(CreateOrderRequest request)
@@ -32,9 +43,12 @@ namespace Application.Services
             if (string.IsNullOrWhiteSpace(request.ShippingAddress) || string.IsNullOrWhiteSpace(request.PhoneNumber))
                 return Result<CreateOrderResponse>.Fail("VALIDATION_ERROR", "Thiếu thông tin địa chỉ hoặc số điện thoại giao hàng.");
 
+            if (string.IsNullOrWhiteSpace(request.RecipientEmail))
+                return Result<CreateOrderResponse>.Fail("VALIDATION_ERROR", "Thiếu email người nhận hàng.");
+
             try
             {
-                return await _repo.ExecuteInTransactionAsync(
+                var createResult = await _repo.ExecuteInTransactionAsync(
                     async () =>
                     {
                         var productIds = request.Items.Select(i => i.ProductVariantId).ToList();
@@ -75,7 +89,7 @@ namespace Application.Services
                         var order = new Order
                         {
                             Id = Guid.NewGuid(),
-                            OrderNo = $"ORD-{DateTime.UtcNow:yyyyMMddHHmmss}-{Random.Shared.Next(1000, 9999)}",
+                            OrderNo = $"ORD{DateTime.UtcNow:yyyyMMddHHmmss}{Random.Shared.Next(1000, 9999)}",
                             UserId = request.UserId,
                             Status = OrderStatus.pending,
                             PaymentStatus = PaymentStatus.unpaid,
@@ -83,7 +97,7 @@ namespace Application.Services
                             DiscountAmount = 0,
                             ShippingAmount = 0,
                             TotalAmount = totalAmount,
-                            ShipRecipient = "Customer",
+                            ShipRecipient = request.RecipientName ?? "Khách hàng",
                             ShipPhone = request.PhoneNumber,
                             ShipLine1 = request.ShippingAddress,
                             ShipWard = request.Ward,
@@ -126,10 +140,62 @@ namespace Application.Services
                         });
                     },
                     r => r.IsSuccess);
+
+                // Send immediate confirmation only for COD.
+                if (createResult.IsSuccess && request.PaymentMethod == PaymentMethod.cod)
+                {
+                    await TrySendOrderConfirmationEmailAsync(createResult.Value!, request.UserId, request.RecipientEmail);
+                }
+
+                return createResult;
             }
             catch (Exception ex)
             {
                 return Result<CreateOrderResponse>.Fail("ORDER_CREATE_FAILED", "Tạo đơn hàng thất bại.", ex.Message);
+            }
+        }
+
+        private async Task TrySendOrderConfirmationEmailAsync(CreateOrderResponse createdOrder, Guid? userId, string? recipientEmail)
+        {
+            try
+            {
+                var order = await _repo.GetOrderByIdAsync(createdOrder.OrderId);
+                if (order == null || order.OrderItems.Count == 0)
+                    return;
+
+                Domain.Entities.User? user = null;
+                if (userId.HasValue)
+                {
+                    user = await _userRepository.GetByIdAsync(userId.Value, CancellationToken.None);
+                }
+
+                var targetEmail = string.IsNullOrWhiteSpace(recipientEmail) ? user?.Email : recipientEmail.Trim();
+                if (string.IsNullOrWhiteSpace(targetEmail))
+                    return;
+
+                await _emailService.SendOrderConfirmationAsync(new OrderConfirmationEmailRequest
+                {
+                    RecipientEmail = targetEmail,
+                    RecipientName = user?.FullName != null ? user?.FullName : order.ShipRecipient,
+                    ReciptientAddress = order?.ShipLine1,
+                    PhoneNumber = order?.ShipPhone,
+                    OrderNo = order.OrderNo,
+                    OrderedAt = order.CreatedAt,
+                    PaymentStatus = order.PaymentStatus,
+                    TotalAmount = order.TotalAmount,
+                    Items = order.OrderItems.Select(item => new OrderConfirmationEmailItem
+                    {
+                        ProductName = item.Name,
+                        VariantName = item.VariantName,
+                        Quantity = item.Quantity,
+                        LineTotal = item.LineTotal
+                    }).ToList()
+                });
+            }
+            catch (Exception ex)
+            {
+                // Email should not block successful order creation.
+                _logger.LogError(ex, "Failed to send order confirmation email for order {OrderId}", createdOrder.OrderId);
             }
         }
 
@@ -241,17 +307,22 @@ namespace Application.Services
             }
         }
 
-        public async Task<Result<List<AdminOrderResponse>>> GetAllOrdersAsync()
+        public async Task<Result<(List<AdminOrderResponse> Items, long Total)>> GetOrdersPagedAsync(
+            int page,
+            int pageSize,
+            string? search,
+            int? status,
+            CancellationToken cancellationToken = default)
         {
             try
             {
-                var orders = await _repo.GetAllOrdersAsync();
+                var (orders, total) = await _repo.GetOrdersPagedAsync(page, pageSize, search, status, cancellationToken);
                 var response = orders.Select(MapAdminOrder).ToList();
-                return Result<List<AdminOrderResponse>>.Ok(response);
+                return Result<(List<AdminOrderResponse> Items, long Total)>.Ok((response, total));
             }
             catch (Exception ex)
             {
-                return Result<List<AdminOrderResponse>>.Fail("ORDER_LIST_FAILED", "Lấy danh sách đơn hàng thất bại.", ex.Message);
+                return Result<(List<AdminOrderResponse> Items, long Total)>.Fail("ORDER_LIST_FAILED", "Lấy danh sách đơn hàng thất bại.", ex.Message);
             }
         }
 

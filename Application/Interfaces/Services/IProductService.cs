@@ -9,7 +9,7 @@ namespace Application.Interfaces.Services;
 /// </summary>
 public interface IProductService
 {
-    Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid>? categoryId, string? categorySlug, CancellationToken cancellationToken = default);
+    Task<Result<(List<ProductDto> Items, long Total)>> GetPagedAsync(int page, int pageSize, string? search, int? status, List<Guid>? categoryId, string? categorySlug, bool? inStock = null, CancellationToken cancellationToken = default);
     Task<Result<ProductDetailDto?>> GetBySlugAsync(string slug, CancellationToken cancellationToken = default);
     Task<Result<ProductDetailDto?>> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Result<List<ProductVariantDto>>> GetVariantsByProductIdAsync(Guid productId, CancellationToken cancellationToken = default);

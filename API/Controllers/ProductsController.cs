@@ -38,9 +38,10 @@ public class ProductsController : BaseApiController
         [FromQuery] int? status = null,
         [FromQuery] List<Guid>? categoryId = null,
         [FromQuery] string? categorySlug = null,
+        [FromQuery] bool? inStock = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId, categorySlug, cancellationToken);
+        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId, categorySlug, inStock, cancellationToken);
         if (result.IsFailure)
             return ResultToStatus(result, "Products");
 
@@ -59,9 +60,10 @@ public class ProductsController : BaseApiController
         [FromQuery] int pageSize = 10,
         [FromQuery] string? search = null,
         [FromQuery] int? status = null,
+        [FromQuery] bool? inStock = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId: null, categorySlug, cancellationToken);
+        var result = await _productService.GetPagedAsync(page, pageSize, search, status, categoryId: null, categorySlug, inStock, cancellationToken);
         if (result.IsFailure)
             return ResultToStatus(result, "Products");
 

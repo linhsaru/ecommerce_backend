@@ -27,7 +27,6 @@
     <Compile Include="Interfaces\Repositories\IInventoryRepository.cs" />
     <Compile Include="Interfaces\Repositories\IOrderRepository.cs" />
     <Compile Include="Interfaces\Repositories\IProductRepository.cs" />
-    <Compile Include="Interfaces\Repositories\IPromotionRepository.cs" />
     <Compile Include="Interfaces\Repositories\IRoleRepository.cs" />
     <Compile Include="Interfaces\Repositories\IUserRepository.cs" />
   </ItemGroup>

@@ -1,8 +1,7 @@
 using Domain.Entities;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Domain.Interfaces.Repositories
@@ -11,7 +10,7 @@ namespace Domain.Interfaces.Repositories
     {
         Task<List<ProductVariant>> GetVariantsByIdsAsync(List<Guid> ids);
         Task<List<Order>> GetOrdersByUserIdAsync(Guid userId);
-        Task<List<Order>> GetAllOrdersAsync();
+        Task<(List<Order> Items, long Total)> GetOrdersPagedAsync(int page, int pageSize, string? search, int? status, CancellationToken cancellationToken = default);
         Task<Order?> GetOrderByIdAsync(Guid orderId);
         Task<Order?> GetOrderByOrderNoAsync(string orderNo);
         Task<Shipment?> GetLatestShipmentByOrderIdAsync(Guid orderId);

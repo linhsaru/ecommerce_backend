@@ -539,6 +539,8 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
     {
         var estimatedPower = (cpu.Tdp > 0 ? cpu.Tdp : 65) + (gpu?.PowerConsumption ?? 0) + 90;
         var minRequired = estimatedPower * 1.25;
+        if (gpu?.RecommendedPsu > 0)
+            minRequired = Math.Max(minRequired, gpu.RecommendedPsu);
         var maxAllowed = profile.PsuMaxMultiplier <= 0 ? int.MaxValue : estimatedPower * profile.PsuMaxMultiplier;
         var requiredConnectors = (gpu?.RequiredConnectors ?? new List<string>())
             .Select(NormalizeConnector)
@@ -558,9 +560,14 @@ public sealed class PcBuildGeminiSuggestionService : IPcBuildGeminiSuggestionSer
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .ToList();
             if (available.Count == 0)
-                return false;
+                return gpu?.RecommendedPsu > 0;
 
-            return requiredConnectors.All(req => available.Any(av => av.Contains(req, StringComparison.OrdinalIgnoreCase) || req.Contains(av, StringComparison.OrdinalIgnoreCase)));
+            var allMatched = requiredConnectors.All(req => available.Any(av => av.Contains(req, StringComparison.OrdinalIgnoreCase) || req.Contains(av, StringComparison.OrdinalIgnoreCase)));
+            if (allMatched)
+                return true;
+
+            // If connector metadata is inconsistent, keep candidates that satisfy recommended PSU.
+            return gpu?.RecommendedPsu > 0;
         });
     }
 

@@ -20,4 +20,22 @@ public sealed class CreateProductRequest
     public string? ThumbnailUrl { get; set; }
     public Guid? BrandId { get; set; }
     public List<Guid>? CategoryIds { get; set; }
+
+    public CreateProductInitialVariantRequest? InitialVariant { get; set; }
+}
+
+public sealed class CreateProductInitialVariantRequest
+{
+    [Required]
+    [MaxLength(100)]
+    public string Sku { get; set; } = "";
+
+    [MaxLength(500)]
+    public string? VariantName { get; set; }
+
+    public decimal Price { get; set; }
+
+    public decimal? CompareAt { get; set; }
+
+    public decimal? Cost { get; set; }
 }
