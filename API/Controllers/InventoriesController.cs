@@ -23,14 +23,25 @@ public class InventoriesController : BaseApiController
         [FromQuery] int pageSize = 10,
         [FromQuery] Guid? warehouseId = null,
         [FromQuery] Guid? variantId = null,
+        [FromQuery] string? search = null,
         CancellationToken cancellationToken = default)
     {
-        var result = await _inventoryService.GetPagedAsync(page, pageSize, warehouseId, variantId, cancellationToken);
+        var result = await _inventoryService.GetPagedAsync(page, pageSize, warehouseId, variantId, search, cancellationToken);
         if (result.IsFailure)
             return ResultToStatus(result, "Inventories");
         var (items, total) = result.Value!;
         var response = PagedResponse<InventoryDto>.Create(items, page, pageSize, total);
         return Ok(ApiResponse<PagedResponse<InventoryDto>>.Ok(response, traceId: HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("warehouse-summaries")]
+    [ProducesResponseType(typeof(ApiResponse<List<WarehouseInventorySummaryDto>>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetWarehouseSummaries(CancellationToken cancellationToken = default)
+    {
+        var result = await _inventoryService.GetWarehouseSummariesAsync(cancellationToken);
+        if (result.IsFailure)
+            return ResultToStatus(result, "Inventories");
+        return Ok(ApiResponse<List<WarehouseInventorySummaryDto>>.Ok(result.Value!, traceId: HttpContext.TraceIdentifier));
     }
 
     [HttpGet("warehouse/{warehouseId:guid}/variant/{variantId:guid}")]

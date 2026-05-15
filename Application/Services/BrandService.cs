@@ -1,48 +1,37 @@
-﻿using Application.DTOs.Brands;
+using Application.DTOs.Brands;
 using Application.Interfaces.Services;
 using Domain.Interfaces.Repositories;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace Application.Services
+namespace Application.Services;
+
+public class BrandService : IBrandService
 {
-    public class BrandService : IBrandService
+    private readonly IBrandRepository _brandRpository;
+
+    public BrandService(IBrandRepository brandRpository) => _brandRpository = brandRpository;
+
+    public async Task<IEnumerable<BrandDto>> GetAllAsync(CancellationToken cancellationToken = default)
     {
-        private readonly IBrandRepository _brandRpository;
-
-        public BrandService(IBrandRepository brandRpository)
+        var rows = await _brandRpository.GetAllAsync(cancellationToken);
+        return rows.Select(tuple => new BrandDto
         {
-            _brandRpository = brandRpository;
-        }
+            Id = tuple.Brand.Id,
+            Name = tuple.Brand.Name,
+            Slug = tuple.Brand.Slug,
+            ProductCount = tuple.ProductCount,
+        });
+    }
 
-        public async Task<IEnumerable<BrandDto>> GetAllAsync()
+    public async Task<BrandDto?> GetBySlugAsync(string slug, CancellationToken cancellationToken = default)
+    {
+        var (brand, productCount) = await _brandRpository.GetBySlugAsync(slug, cancellationToken);
+        if (brand == null) return null;
+        return new BrandDto
         {
-            var brands = await _brandRpository.GetAllAsync();
-            return brands.Select(b => new BrandDto
-            {
-                Id = b.Id,
-                Name = b.Name,
-                Slug = b.Slug,
-            });
-        }
-
-        public Task<BrandDto?> GetBySlugAsync(string slug)
-        {
-            return _brandRpository.GetBySlugAsync(slug)
-                .ContinueWith(task =>
-                {
-                    var brand = task.Result;
-                    if (brand == null) return null;
-                    return new BrandDto
-                    {
-                        Id = brand.Id,
-                        Name = brand.Name,
-                        Slug = brand.Slug,
-                    };
-                });
-        }
+            Id = brand.Id,
+            Name = brand.Name,
+            Slug = brand.Slug,
+            ProductCount = productCount,
+        };
     }
 }
