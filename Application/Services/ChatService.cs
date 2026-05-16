@@ -6,6 +6,7 @@ using Domain.Interfaces.Repositories;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -47,6 +48,13 @@ public sealed class ChatService : IChatService
         "gemini-2.0-flash-lite",
         "gemini-2.5-flash-lite",
     };
+    private static readonly string[] BuiltInFallbackModels =
+    [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.0-flash-lite",
+        "gemini-2.5-pro"
+    ];
     private const string DefaultSystemPrompt =
         "Bạn là trợ lý tư vấn sản phẩm của cửa hàng.\n" +
         "- Khi cần thông tin sản phẩm (gợi ý, so sánh, tìm theo nhu cầu/ngân sách), bạn PHẢI gọi công cụ search_products với query phù hợp; có thể kèm budget (VND) nếu người dùng nêu giá.\n" +
@@ -107,22 +115,41 @@ public sealed class ChatService : IChatService
         string? lastRaw = null;
         for (var round = 0; round < MaxToolRounds; round++)
         {
-            var url = $"{GeminiUrl}{modelToUse}:generateContent?key={apiKey}";
             var body = BuildGenerateContentBody(contents);
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
-            httpRequest.Content = new StringContent(
-                body.ToJsonString(),
-                Encoding.UTF8,
-                "application/json");
-            using var httpResponse = await client.SendAsync(httpRequest, cancellationToken);
-            var raw = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
-            lastRaw = raw;
-            if (!httpResponse.IsSuccessStatusCode)
+            var chain = ResolveModelFallbackChain(modelToUse);
+            string raw = "";
+            var requestOk = false;
+            foreach (var geminiModel in chain)
+            {
+                var url = $"{GeminiUrl}{geminiModel}:generateContent?key={apiKey}";
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, url);
+                httpRequest.Content = new StringContent(
+                    body.ToJsonString(),
+                    Encoding.UTF8,
+                    "application/json");
+                using var httpResponse = await client.SendAsync(httpRequest, cancellationToken);
+                raw = await httpResponse.Content.ReadAsStringAsync(cancellationToken);
+                lastRaw = raw;
+                if (httpResponse.IsSuccessStatusCode)
+                {
+                    modelToUse = geminiModel;
+                    requestOk = true;
+                    break;
+                }
+                if (!IsTransientGeminiFailure(httpResponse.StatusCode, raw))
+                {
+                    return Result<ChatResponse>.Fail(
+                        "GEMINI_ERROR",
+                        "Gemini request failed.",
+                        $"Model={geminiModel}. Raw={raw}");
+                }
+            }
+            if (!requestOk)
             {
                 return Result<ChatResponse>.Fail(
                     "GEMINI_ERROR",
-                    "Gemini request failed.",
-                    $"Model={modelToUse}. Raw={raw}");
+                    "Gemini temporarily unavailable for all configured models. Try again later or change BotChat:DefaultModel / FallbackModels.",
+                    $"Tried=[{string.Join(", ", chain)}]. Raw={raw}");
             }
             JsonElement root;
             try
@@ -837,6 +864,59 @@ public sealed class ChatService : IChatService
             return new ProductsDataset("pc", PcCategorySlugs);
         }
         return new ProductsDataset("all", Array.Empty<string>());
+    }
+    //Ưu tiên model đang chọn, sau đó BotChat:FallbackModels (hoặc BuiltInFallbackModels)
+    private IReadOnlyList<string> ResolveModelFallbackChain(string primaryNormalized)
+    {
+        var list = new List<string>();
+        void AddIfAllowed(string? m)
+        {
+            var n = NormalizeModelName(m);
+            if (string.IsNullOrWhiteSpace(n) || !IsAllowedModel(n)) return;
+            if (list.Exists(x => x.Equals(n, StringComparison.OrdinalIgnoreCase))) return;
+            list.Add(n);
+        }
+        AddIfAllowed(primaryNormalized);
+        var fromConfig = _configuration.GetSection("BotChat:FallbackModels").Get<string[]>();
+        if (fromConfig is { Length: > 0 })
+        {
+            foreach (var item in fromConfig)
+                AddIfAllowed(item);
+        }
+        else
+        {
+            foreach (var item in BuiltInFallbackModels)
+                AddIfAllowed(item);
+        }
+        return list;
+    }
+    //503 / 429 và một số mã Google's API — có thể thử model khác hoặc gọi lại sau
+    private static bool IsTransientGeminiFailure(HttpStatusCode status, string raw)
+    {
+        if (status == HttpStatusCode.ServiceUnavailable) return true;
+        if (status == HttpStatusCode.TooManyRequests) return true;
+        if ((int)status == 429) return true;
+        if (string.IsNullOrWhiteSpace(raw)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            if (!doc.RootElement.TryGetProperty("error", out var err)) return false;
+            if (err.TryGetProperty("status", out var st))
+            {
+                var s = st.GetString();
+                if (s is "UNAVAILABLE" or "RESOURCE_EXHAUSTED" or "DEADLINE_EXCEEDED") return true;
+            }
+            if (err.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.Number)
+            {
+                var n = c.GetInt32();
+                if (n is 503 or 429) return true;
+            }
+        }
+        catch (JsonException)
+        {
+            // ignore
+        }
+        return false;
     }
     private static string? NormalizeModelName(string? model)
     {

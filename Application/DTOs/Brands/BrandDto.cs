@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -11,5 +11,7 @@ namespace Application.DTOs.Brands
         public Guid Id { get; init; }
         public string Name { get; init; } = "";
         public string Slug { get; init; } = "";
+        /// <summary>Số sản phẩm đang hiển thị (active, chưa xóa).</summary>
+        public int ProductCount { get; init; }
     }
 }

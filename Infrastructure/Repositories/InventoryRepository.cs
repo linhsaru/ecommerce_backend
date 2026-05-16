@@ -17,6 +17,7 @@ namespace Infrastructure.Repositories
             => await _db.Inventories
                 .Include(i => i.Warehouse)
                 .Include(i => i.Variant)
+                    .ThenInclude(v => v.Product)
                 .FirstOrDefaultAsync(i => i.WarehouseId == warehouseId && i.VariantId == variantId, ct);
 
         public async Task<int> GetTotalStockAsync(Guid variantId, CancellationToken ct = default)

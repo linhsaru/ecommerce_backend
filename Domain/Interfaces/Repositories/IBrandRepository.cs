@@ -1,15 +1,9 @@
-﻿using Domain.Entities;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Domain.Entities;
 
-namespace Domain.Interfaces.Repositories
+namespace Domain.Interfaces.Repositories;
+
+public interface IBrandRepository
 {
-    public interface IBrandRepository
-    {
-        Task<IEnumerable<Brand>> GetAllAsync();
-        Task<Brand?> GetBySlugAsync(string slug);
-    }
+    Task<IReadOnlyList<(Brand Brand, int ProductCount)>> GetAllAsync(CancellationToken cancellationToken = default);
+    Task<(Brand? Brand, int ProductCount)> GetBySlugAsync(string slug, CancellationToken cancellationToken = default);
 }
